@@ -2539,14 +2539,20 @@
     visCard.appendChild(visSave);
     root.appendChild(visCard);
 
-    // --- 卡片 0.5: 交易统计（购买 / 收购） ---
+    // --- 卡片 0.5: 交易统计中心 ---
     const tradeCard = el('div', { class: 'admin-card' }, [
-      el('h3', { text: '📈 交易统计（购买 / 收购）' }),
-      el('p', { class: 'hint', text: '记录网页交易与游戏内交易；可导出 CSV 到 Excel 统计。' })
+      el('h3', { text: '📈 交易统计中心' }),
+      el('p', { class: 'hint', text: '网页 + 游戏内交易明细聚合（基于最近 1 万条记录）；购买=玩家买入，收购=玩家卖出。' })
     ]);
-    const tradeStats = el('div', { style: { display: 'flex', gap: '24px', flexWrap: 'wrap', margin: '10px 0', fontSize: '14px', fontWeight: '600' } });
+    const tradeStats = el('div', { style: { display: 'flex', gap: '20px', flexWrap: 'wrap', margin: '10px 0', fontSize: '13px', fontWeight: '600' } });
     tradeCard.appendChild(tradeStats);
-    const tradeBtns = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap' } });
+    const tradeCharts = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '12px' } });
+    tradeCard.appendChild(tradeCharts);
+    const tradeEcon = el('div', { style: { marginTop: '12px', padding: '10px', border: '2px dashed #059669', borderRadius: '6px', background: '#ecfdf5', fontSize: '13px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '6px' } });
+    tradeCard.appendChild(tradeEcon);
+    const tradeRanks = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' } });
+    tradeCard.appendChild(tradeRanks);
+    const tradeBtns = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } });
     const exportTradesBtn = el('button', { class: 'neo-btn primary', text: '导出交易记录 CSV' });
     const clearTradesBtn = el('button', { class: 'neo-btn danger', text: '清空交易记录' });
     tradeBtns.appendChild(exportTradesBtn);
@@ -2555,6 +2561,64 @@
     root.appendChild(tradeCard);
 
     let tradesCache = [];
+    const num2 = function (v) { const n = Number(v) || 0; return Math.round(n * 100) / 100; };
+    const pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    function isSystemOwner(owner) {
+      if (owner == null) return true;
+      const o = String(owner).trim().toLowerCase();
+      return o === '' || o === '系统商店' || o === '无限' || o === 'unlimited' || o === 'server' || o === 'console' || o === 'unknown';
+    }
+    function bumpMap(map, key, amount, items) {
+      let e = map.get(key);
+      if (!e) { e = { count: 0, amount: 0, items: 0 }; map.set(key, e); }
+      e.count++;
+      e.amount += amount;
+      e.items += items;
+    }
+    function barPanel(title, labels, fullLabels, series) {
+      const box = el('div', { style: { border: '2px solid #000', borderRadius: '6px', padding: '10px', background: '#fff' } });
+      box.appendChild(el('div', { style: { fontWeight: '700', marginBottom: '8px', fontSize: '13px' }, text: title }));
+      const allVals = [];
+      series.forEach(function (s) { s.data.forEach(function (v) { allVals.push(v || 0); }); });
+      const max = Math.max(1, ...allVals);
+      const chart = el('div', { style: { display: 'flex', alignItems: 'flex-end', gap: '2px', height: '110px' } });
+      for (let i = 0; i < labels.length; i++) {
+        const tip = fullLabels ? (fullLabels[i] + '\n' + series.map(function (s) { return s.name + ': ' + (s.data[i] || 0); }).join('\n')) : '';
+        const col = el('div', { title: tip, style: { flex: '1', minWidth: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', height: '100%' } });
+        const bars = el('div', { style: { display: 'flex', gap: '1px', alignItems: 'flex-end', height: '88px' } });
+        series.forEach(function (s) {
+          const h = Math.max(1, Math.round(((s.data[i] || 0) / max) * 86));
+          bars.appendChild(el('div', { style: { width: '5px', height: h + 'px', background: s.color, borderRadius: '2px 2px 0 0' } }));
+        });
+        col.appendChild(bars);
+        col.appendChild(el('div', { style: { fontSize: '9px', color: '#6b7280', marginTop: '2px' }, text: labels[i] }));
+        chart.appendChild(col);
+      }
+      box.appendChild(chart);
+      const legend = el('div', { style: { display: 'flex', gap: '12px', marginTop: '6px', fontSize: '11px', flexWrap: 'wrap' } });
+      series.forEach(function (s) {
+        legend.appendChild(el('span', {}, [el('span', { style: { display: 'inline-block', width: '10px', height: '10px', background: s.color, marginRight: '4px', borderRadius: '2px', verticalAlign: 'middle' } }), s.name]));
+      });
+      box.appendChild(legend);
+      return box;
+    }
+    function rankPanel(title, map, fmt) {
+      const box = el('div', { style: { border: '2px solid #000', borderRadius: '6px', padding: '10px', background: '#fff' } });
+      box.appendChild(el('div', { style: { fontWeight: '700', marginBottom: '6px', fontSize: '13px' }, text: title }));
+      const arr = Array.from(map.entries()).sort(function (a, b) { return b[1].amount - a[1].amount; }).slice(0, 10);
+      if (!arr.length) {
+        box.appendChild(el('div', { style: { color: '#9ca3af', fontSize: '12px' }, text: '暂无数据' }));
+        return box;
+      }
+      arr.forEach(function (entry, i) {
+        const row = el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '3px 0', borderBottom: '1px dashed #e5e7eb' } });
+        row.appendChild(el('span', { title: entry[0], style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '62%' }, text: (i + 1) + '. ' + entry[0] }));
+        row.appendChild(el('span', { style: { fontWeight: '700', flexShrink: '0' }, text: fmt(entry[1]) }));
+        box.appendChild(row);
+      });
+      return box;
+    }
+
     async function loadTradesPanel() {
       tradeStats.textContent = '加载中...';
       const r = await QSDB.getTrades();
@@ -2563,15 +2627,114 @@
         return;
       }
       tradesCache = r.trades || [];
-      const s = r.stats || {};
+
+      // ===== 聚合 =====
+      const byDay = new Map(), byHourBuy = new Array(24).fill(0), byHourSell = new Array(24).fill(0);
+      const buyers = new Map(), sellers = new Map(), itemBuy = new Map(), itemSell = new Map();
+      const owners = new Map(), shops = new Map();
+      const players = new Set();
+      let sysIn = 0, sysOut = 0, playerFlow = 0, taxSum = 0, totalAmount = 0, maxTrade = null;
+      const nowD = new Date();
+      const todayStart = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+      const ydayStart = todayStart - 86400000;
+      const d7Start = todayStart - 6 * 86400000;
+      const d30Start = todayStart - 29 * 86400000;
+      const acc = { todayBuy: 0, todayBuyAmount: 0, todaySell: 0, todaySellAmount: 0, ydayBuy: 0, ydayBuyAmount: 0, ydaySell: 0, ydaySellAmount: 0, d7Buy: 0, d7BuyAmount: 0, d7Sell: 0, d7SellAmount: 0, d30Buy: 0, d30BuyAmount: 0, d30Sell: 0, d30SellAmount: 0 };
+
+      for (const t of tradesCache) {
+        const ts = Number(t.t) || 0;
+        const amount = Number(t.total) || 0;
+        const items = Number(t.items) || 0;
+        const isBuy = t.type === 'BUY';
+        const player = t.player || '未知';
+        const item = t.item || t.material || '未知';
+        const owner = t.owner || '';
+        const sys = isSystemOwner(owner);
+        totalAmount += amount;
+        players.add(player);
+        if (t.tax) taxSum += Number(t.tax) || 0;
+        if (!maxTrade || amount > Number(maxTrade.total)) maxTrade = t;
+        if (isBuy) { if (sys) sysOut += amount; else playerFlow += amount; }
+        else { if (sys) sysIn += amount; else playerFlow += amount; }
+
+        const d = new Date(ts);
+        const dayKey = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+        let day = byDay.get(dayKey);
+        if (!day) { day = { buy: 0, buyAmount: 0, sell: 0, sellAmount: 0 }; byDay.set(dayKey, day); }
+        if (isBuy) { day.buy++; day.buyAmount += amount; } else { day.sell++; day.sellAmount += amount; }
+
+        const hour = d.getHours();
+        if (isBuy) byHourBuy[hour]++; else byHourSell[hour]++;
+
+        bumpMap(isBuy ? buyers : sellers, player, amount, items);
+        bumpMap(isBuy ? itemBuy : itemSell, item, amount, items);
+        if (!sys) bumpMap(owners, owner, amount, items);
+        bumpMap(shops, '#' + (t.shop_id || '?'), amount, items);
+
+        if (ts >= todayStart) { if (isBuy) { acc.todayBuy++; acc.todayBuyAmount += amount; } else { acc.todaySell++; acc.todaySellAmount += amount; } }
+        else if (ts >= ydayStart) { if (isBuy) { acc.ydayBuy++; acc.ydayBuyAmount += amount; } else { acc.ydaySell++; acc.ydaySellAmount += amount; } }
+        if (ts >= d7Start) { if (isBuy) { acc.d7Buy++; acc.d7BuyAmount += amount; } else { acc.d7Sell++; acc.d7SellAmount += amount; } }
+        if (ts >= d30Start) { if (isBuy) { acc.d30Buy++; acc.d30BuyAmount += amount; } else { acc.d30Sell++; acc.d30SellAmount += amount; } }
+      }
+
+      // ===== 概览 =====
       tradeStats.innerHTML = '';
-      tradeStats.appendChild(el('span', { text: '购买: ' + (s.buy_count || 0) + ' 笔 · $' + (s.buy_total || 0) + ' · ' + (s.buy_items || 0) + ' 件' }));
-      tradeStats.appendChild(el('span', { text: '收购: ' + (s.sell_count || 0) + ' 笔 · $' + (s.sell_total || 0) + ' · ' + (s.sell_items || 0) + ' 件' }));
-      tradeStats.appendChild(el('span', { text: '明细共 ' + tradesCache.length + ' 条' }));
+      [
+        '今日: 买 ' + acc.todayBuy + ' 笔 $' + num2(acc.todayBuyAmount) + ' · 卖 ' + acc.todaySell + ' 笔 $' + num2(acc.todaySellAmount),
+        '昨日: 买 ' + acc.ydayBuy + ' 笔 $' + num2(acc.ydayBuyAmount) + ' · 卖 ' + acc.ydaySell + ' 笔 $' + num2(acc.ydaySellAmount),
+        '近7日: 买 $' + num2(acc.d7BuyAmount) + ' · 卖 $' + num2(acc.d7SellAmount),
+        '近30日: 买 $' + num2(acc.d30BuyAmount) + ' · 卖 $' + num2(acc.d30SellAmount),
+        '总记录: ' + tradesCache.length + ' 笔'
+      ].forEach(function (s) { tradeStats.appendChild(el('span', { text: s })); });
+
+      // ===== 图表 =====
+      tradeCharts.innerHTML = '';
+      const days = [];
+      for (let i = 13; i >= 0; i--) days.push(new Date(todayStart - i * 86400000));
+      const dayLabels = [], dayFull = [], dBuyAmount = [], dSellAmount = [];
+      days.forEach(function (dd) {
+        const key = dd.getFullYear() + '-' + pad2(dd.getMonth() + 1) + '-' + pad2(dd.getDate());
+        const st = byDay.get(key) || { buyAmount: 0, sellAmount: 0 };
+        dayLabels.push(String(dd.getDate()));
+        dayFull.push(key);
+        dBuyAmount.push(num2(st.buyAmount));
+        dSellAmount.push(num2(st.sellAmount));
+      });
+      tradeCharts.appendChild(barPanel('近 14 天交易金额（$）', dayLabels, dayFull, [
+        { name: '购买', color: '#3b82f6', data: dBuyAmount },
+        { name: '收购', color: '#f59e0b', data: dSellAmount }
+      ]));
+      const hourLabels = [], hourFull = [];
+      for (let h = 0; h < 24; h++) { hourLabels.push(String(h)); hourFull.push(h + ' 时'); }
+      tradeCharts.appendChild(barPanel('24 小时交易笔数', hourLabels, hourFull, [
+        { name: '购买', color: '#3b82f6', data: byHourBuy },
+        { name: '收购', color: '#f59e0b', data: byHourSell }
+      ]));
+
+      // ===== 经济流向 =====
+      tradeEcon.innerHTML = '';
+      const net = sysIn - sysOut;
+      [
+        '系统商店净增发: $' + num2(net) + '（' + (net >= 0 ? '◆ 印钞' : '▼ 回收') + '）',
+        '玩家间流转: $' + num2(playerFlow),
+        '税收合计: $' + num2(taxSum),
+        '平均单笔: $' + num2(tradesCache.length ? totalAmount / tradesCache.length : 0),
+        '活跃交易玩家: ' + players.size + ' 人',
+        '最高单笔: ' + (maxTrade ? ('$' + num2(maxTrade.total) + '（' + (maxTrade.player || '?') + ' · ' + (maxTrade.item || '?') + '）') : '—')
+      ].forEach(function (s) { tradeEcon.appendChild(el('span', { text: s })); });
+
+      // ===== 排行榜 =====
+      tradeRanks.innerHTML = '';
+      tradeRanks.appendChild(rankPanel('🏆 消费榜（买家 Top10）', buyers, function (s) { return '$' + num2(s.amount) + ' · ' + s.count + '笔'; }));
+      tradeRanks.appendChild(rankPanel('💰 收入榜（卖家 Top10）', sellers, function (s) { return '$' + num2(s.amount) + ' · ' + s.count + '笔'; }));
+      tradeRanks.appendChild(rankPanel('🔥 热销榜（被买走 Top10）', itemBuy, function (s) { return num2(s.items) + ' 件 · $' + num2(s.amount); }));
+      tradeRanks.appendChild(rankPanel('📦 收购榜（被卖出 Top10）', itemSell, function (s) { return num2(s.items) + ' 件 · $' + num2(s.amount); }));
+      tradeRanks.appendChild(rankPanel('🏪 店主营收榜 Top10', owners, function (s) { return '$' + num2(s.amount) + ' · ' + s.count + '笔'; }));
+      tradeRanks.appendChild(rankPanel('🏬 商店热度榜 Top10', shops, function (s) { return s.count + ' 笔 · $' + num2(s.amount); }));
     }
     exportTradesBtn.onclick = function () {
       if (!tradesCache.length) { Toast.show('暂无交易记录', 'warning'); return; }
-      const head = ['时间', '类型', '来源', '玩家', '物品', '材质', '份数', '物品数量', '单价', '总额', '商店ID', '店主', '玩家在线'];
+      const head = ['时间', '类型', '来源', '玩家', '物品', '材质', '份数', '物品数量', '单价', '总额', '税收', '商店ID', '店主', '玩家在线'];
       const cell = function (v) {
         const s = String(v == null ? '' : v);
         return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -2581,7 +2744,7 @@
         const d = new Date(Number(t.t) || 0);
         const time = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         return [time, t.type === 'BUY' ? '购买' : '收购', t.source === 'game' ? '游戏内' : '网页', t.player, t.item, t.material,
-          t.amount, t.items, t.unit_price, t.total, t.shop_id, t.owner, t.online ? '是' : '否'];
+          t.amount, t.items, t.unit_price, t.total, t.tax == null ? '' : t.tax, t.shop_id, t.owner, t.online ? '是' : '否'];
       });
       const csv = '\uFEFF' + [head].concat(rows).map(function (r) { return r.map(cell).join(','); }).join('\r\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
