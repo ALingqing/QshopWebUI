@@ -1,0 +1,53 @@
+# ============================================================
+#  QShopWebUI — QuickShop-Hikari 商店网页系统
+# ============================================================
+
+# 网页监听端口
+#   standalone 模式：浏览器访问  http://服务器IP:本端口/
+#   multiplex  模式：本端口 = 游戏对外端口，插件自动分流「网页」与「游戏」流量
+port: 20130
+
+# 监听地址（一般不用改；0.0.0.0 = 所有网卡）
+bind: 0.0.0.0
+
+# 端口模式：
+#   standalone — 独立端口：插件只监听 port 提供网页；MC 服务器照常用自己的端口
+#   multiplex  — 单端口复用：插件监听 port（=玩家连接游戏用的端口），
+#                自动识别浏览器(HTTP)与游戏(MC协议)流量；
+#                ⚠ 需要把 MC 的 server.properties 里 server-port 改成另一个
+#                  “容器内部端口”（例如 25565），重启后玩家仍连本端口即可。
+#   auto       — 自动：port 等于当前游戏端口时采用 multiplex，否则 standalone
+mode: auto
+
+# multiplex 模式下，游戏流量转发到的实际地址
+# mc-port: 0 表示自动读取当前服务器端口（Bukkit.getPort()）
+mc-host: 127.0.0.1
+mc-port: 0
+
+# ------------------------------------------------------------
+# 管理员账号（网页后台登录用）
+# password 支持两种格式：
+#   admin123           —— 明文（简单，不建议）
+#   sha256:<64位hex>   —— 哈希（网页“修改密码”后会自动写成该格式）
+# ------------------------------------------------------------
+admin:
+  username: admin
+  password: admin123
+
+# 会话有效期（秒）
+session-timeout: 3600
+
+# 网页/api 功能参数
+web:
+  # 单页最大条数（防止恶意大请求）
+  max-page-size: 500
+  default-page-size: 60
+  # 请求体上限（字节），类似原版 REQUEST_BODY_LIMIT=10mb
+  max-body-size: 10485760
+  # 每个请求是否输出访问日志到控制台
+  access-log: false
+  # 数据快照缓存时间（毫秒）：短时间内的请求复用同一份 QuickShop 数据
+  snapshot-ttl-ms: 5000
+
+# 是否在控制台打印 QuickShop 数据源状态
+debug: false

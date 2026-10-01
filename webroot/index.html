@@ -1,0 +1,70 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qshop — Minecraft 商店管理系统</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <!-- 加载动画 (DOM 加载后立即渲染, 无需等待 JS 解析) -->
+  <div id="loader-overlay" class="loader-overlay">
+    <div class="loader-box">
+      <div class="loader-spinner-wrap">
+        <div class="loader-spinner"></div>
+        <div class="loader-spinner-ring"></div>
+      </div>
+      <div class="loader-title">Qshop WebUI</div>
+      <div class="loader-subtitle">Minecraft 商店管理系统</div>
+      <div class="loader-progress-wrap">
+        <div class="loader-progress-bar" id="loader-progress-bar" style="width: 0%"></div>
+      </div>
+      <div class="loader-progress-text" id="loader-progress-text">0% - 正在初始化...</div>
+      <div class="loader-tip" id="loader-tip">提示：初次加载需要较久的时间, 请稍候</div>
+      <div class="loader-stats" id="loader-stats">
+        <span class="loader-stat"><span class="dot"></span> 连接服务器中</span>
+        <span class="loader-stat"><span class="dot"></span> 同步商店数据</span>
+        <span class="loader-stat"><span class="dot"></span> 资源加载完成</span>
+      </div>
+    </div>
+  </div>
+  <!-- 顶部导航栏 -->
+  <header class="topnav" id="topnav">
+    <div class="topnav-inner">
+      <div class="topnav-left">
+        <div class="topnav-logo">🟪 Qshop WebUI</div>
+        <nav class="topnav-tabs" id="topnav-tabs">
+          <button class="topnav-tab active" data-tab="home">首页</button>
+          <button class="topnav-tab" data-tab="browse">物品浏览</button>
+          <button class="topnav-tab" data-tab="shops">商店浏览</button>
+          <button class="topnav-tab" data-tab="stats">信息统计</button>
+          <button class="topnav-tab admin-only" data-tab="monitor" style="display:none;">同步监控</button>
+          <button class="topnav-tab admin-only" data-tab="announce" style="display:none;">公告管理</button>
+          <button class="topnav-tab admin-only" data-tab="admin" style="display:none;">数据管理</button>
+          <button class="topnav-tab admin-only" data-tab="data" style="display:none;">导入导出</button>
+          <button class="topnav-tab admin-only" data-tab="backup" style="display:none;">备份恢复</button>
+        </nav>
+      </div>
+      <div class="topnav-right" id="topnav-auth">
+        <!-- QSFilter 连接状态指示器 (由 JS 动态更新) -->
+        <div id="qsfilter-status" class="qsfilter-status" title="Minecraft 服务器连接状态">
+          <span style="color:#6b7280;font-size:12px;font-weight:600;">MC: 检查中...</span>
+        </div>
+        <!-- 动态渲染: 登录按钮 / 用户信息 -->
+      </div>
+    </div>
+  </header>
+
+  <!-- 主要内容区 -->
+  <main class="main-content" id="content-area"></main>
+
+  <!-- 模态框容器 -->
+  <div id="modal-root"></div>
+
+  <!-- Toast 容器 -->
+  <div id="toast-root"></div>
+
+  <script src="./js/db.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

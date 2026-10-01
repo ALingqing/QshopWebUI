@@ -1,0 +1,510 @@
+package com.qshop.webui.bridge;
+
+import com.qshop.webui.QShopWebUIPlugin;
+import com.qshop.webui.data.ShopEntry;
+import com.qshop.webui.util.JsonUtil;
+import com.qshop.webui.util.Materials;
+import org.bukkit.Bukkit;
+import org.bukkit.plugin.Plugin;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * QuickShop-Hikari 反射桥。
+ * <p>全部通过反射调用 QuickShop API，避免对 QuickShop 具体版本的编译绑定，
+ * 同时兼容 5.x / 6.x 的方法命名差异（多候选方法名依次尝试）。</p>
+ */
+public final class QuickShopBridge {
+
+    private final QShopWebUIPlugin plugin;
+
+    private volatile boolean available = false;
+    private volatile String status = "未检测";
+    private volatile String qsVersion = "";
+
+    private Object shopManager;
+    private Method mGetAllShops;
+    private Method mGetShopById;
+    private Method mDeleteShop;
+
+    private static final Map<Class<?>, Map<String, List<Method>>> METHOD_INDEX = new ConcurrentHashMap<>();
+
+    public QuickShopBridge(QShopWebUIPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    // ============================================================
+    // 初始化 / 状态
+    // ============================================================
+
+    public void reload() {
+        available = false;
+        shopManager = null;
+        mGetAllShops = null;
+        mGetShopById = null;
+        mDeleteShop = null;
+        try {
+            Plugin qs = Bukkit.getPluginManager().getPlugin("QuickShop");
+            if (qs == null) qs = Bukkit.getPluginManager().getPlugin("QuickShop-Hikari");
+            if (qs == null) {
+                status = "未安装 QuickShop-Hikari";
+                return;
+            }
+            if (!qs.isEnabled()) {
+                status = "QuickShop-Hikari 未启用";
+                return;
+            }
+            qsVersion = String.valueOf(qs.getDescription().getVersion());
+
+            ClassLoader cl = qs.getClass().getClassLoader();
+            Class<?> apiClass = Class.forName("com.ghostchu.quickshop.api.QuickShopAPI", true, cl);
+            Object api = apiClass.getMethod("getInstance").invoke(null);
+            if (api == null) {
+                status = "QuickShopAPI.getInstance() 返回空";
+                return;
+            }
+            Object mgr = apiClass.getMethod("getShopManager").invoke(api);
+            if (mgr == null) {
+                status = "QuickShop getShopManager() 返回空";
+                return;
+            }
+            this.shopManager = mgr;
+
+            mGetAllShops = findMethod(mgr.getClass(), "getAllShops", 0);
+            if (mGetAllShops == null) {
+                status = "QuickShop API 缺少 getAllShops()";
+                return;
+            }
+            mGetShopById = findMethod(mgr.getClass(), "getShop", 1);
+            mDeleteShop = findMethod(mgr.getClass(), "deleteShop", 1);
+
+            available = true;
+            status = "已连接 QuickShop " + qsVersion;
+            plugin.getLogger().info("[QuickShop] " + status);
+        } catch (Throwable t) {
+            status = "初始化失败: " + t.getClass().getSimpleName() + ": " + t.getMessage();
+            plugin.getLogger().warning("[QuickShop] " + status);
+        }
+    }
+
+    public boolean isAvailable() {
+        return available;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getQuickShopVersion() {
+        return qsVersion;
+    }
+
+    // ============================================================
+    // 数据读取（必须在主线程调用；对外统一走 getAllShopsOnMainThread）
+    // ============================================================
+
+    @SuppressWarnings("unchecked")
+    public List<Object> getAllShopsRaw() throws Exception {
+        if (!available || mGetAllShops == null) return Collections.emptyList();
+        Object r = mGetAllShops.invoke(shopManager);
+        if (r instanceof Collection) {
+            return new ArrayList<>((Collection<Object>) r);
+        }
+        return Collections.emptyList();
+    }
+
+    /** 线程安全：调度到主线程取商店列表（防止并发遍历 QuickShop 内部集合） */
+    public List<Object> getAllShopsOnMainThread() throws Exception {
+        if (!available) return Collections.emptyList();
+        if (Bukkit.isPrimaryThread()) {
+            return getAllShopsRaw();
+        }
+        Future<List<Object>> f = Bukkit.getScheduler().callSyncMethod(
+                plugin, (Callable<List<Object>>) this::getAllShopsRaw);
+        try {
+            return f.get(20, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new Exception("获取 QuickShop 数据超时（服务器是否卡顿？）");
+        }
+    }
+
+    public Object getShopById(long id) {
+        if (!available || mGetShopById == null) return null;
+        try {
+            return mGetShopById.invoke(shopManager, id);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 把任意任务调度到主线程执行（操作 QuickShop 对象必须如此） */
+    public <T> T runOnMain(Callable<T> task) throws Exception {
+        if (Bukkit.isPrimaryThread()) return task.call();
+        Future<T> f = Bukkit.getScheduler().callSyncMethod(plugin, task);
+        return f.get(20, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 在主线程对指定商店执行操作。
+     *
+     * @param action 返回 null 表示成功；否则为错误信息
+     * @return null = 成功；否则为错误信息
+     */
+    public String mutateShop(long id, java.util.function.Function<Object, String> action) {
+        if (!available) return "QuickShop 未连接";
+        try {
+            return runOnMain(() -> {
+                Object shop = getShopById(id);
+                if (shop == null) return "商店不存在: " + id;
+                return action.apply(shop);
+            });
+        } catch (Throwable t) {
+            return "操作失败: " + rootMessage(t);
+        }
+    }
+
+    /** 读取某商店当前类型（SELLING / BUYING） */
+    public String resolveShopType(Object shop) {
+        return resolveType(shop);
+    }
+
+    // ============================================================
+    // 写操作（尽力而为，兼容多版本）
+    // ============================================================
+
+    /** @return null=成功；否则为错误信息 */
+    public String deleteShop(Object shop) {
+        if (!available || mDeleteShop == null) return "当前 QuickShop 版本不支持删除操作";
+        try {
+            runOnMain(() -> {
+                mDeleteShop.invoke(shopManager, shop);
+                return null;
+            });
+            return null;
+        } catch (Throwable t) {
+            return "删除失败: " + rootMessage(t);
+        }
+    }
+
+    /** @return null=成功；否则为错误信息 */
+    public String setShopPrice(Object shop, double price) {
+        return invokeSingleArg(shop, price, "setPrice", "setShopPrice");
+    }
+
+    /** @return null=成功；否则为错误信息 */
+    public String setShopType(Object shop, String type) {
+        if (!available) return "QuickShop 未连接";
+        try {
+            // 1) 从 shopManager 找 IShopType 对象
+            Object typeObj = null;
+            for (String cand : new String[]{type, type.toLowerCase(Locale.ROOT)}) {
+                Object o = call(shopManager, "shopType", "shopTypeOrDefault");
+                if (o == null) {
+                    // 带参数调用：shopManager.shopType(String)
+                    for (Method m : methods(shopManager, "shopType")) {
+                        if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == String.class) {
+                            try {
+                                o = unwrap(m.invoke(shopManager, cand));
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    }
+                }
+                if (o != null) {
+                    typeObj = o;
+                    break;
+                }
+            }
+            final Object finalType = typeObj;
+            if (finalType == null) {
+                // 5.x 可能支持字符串直接设置
+                String r = invokeSingleArg(shop, type, "setShopType");
+                return r == null ? null : "当前 QuickShop 版本不支持修改商店类型";
+            }
+            runOnMain(() -> {
+                for (Method m : methods(shop, "shopType", "setShopType")) {
+                    if (m.getParameterCount() == 1) {
+                        try {
+                            m.invoke(shop, finalType);
+                            return null;
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                return null;
+            });
+            return null;
+        } catch (Throwable t) {
+            return "修改类型失败: " + rootMessage(t);
+        }
+    }
+
+    private String invokeSingleArg(Object target, Object arg, String... methodNames) {
+        if (target == null) return "目标不存在";
+        for (String name : methodNames) {
+            for (Method m : methods(target, name)) {
+                if (m.getParameterCount() != 1) continue;
+                Class<?> pt = m.getParameterTypes()[0];
+                try {
+                    Object converted = convertArg(arg, pt);
+                    if (converted == null && !arg.getClass().isInstance(converted)) continue;
+                    final Method fm = m;
+                    final Object fa = converted;
+                    runOnMain(() -> {
+                        fm.invoke(target, fa);
+                        return null;
+                    });
+                    return null;
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return "当前 QuickShop 版本不支持该操作（" + methodNames[0] + "）";
+    }
+
+    private static Object convertArg(Object arg, Class<?> targetType) {
+        if (targetType.isInstance(arg)) return arg;
+        if (arg instanceof Double) {
+            double d = (Double) arg;
+            if (targetType == double.class || targetType == Double.class) return d;
+            if (targetType == float.class || targetType == Float.class) return (float) d;
+        }
+        if (targetType == String.class) return String.valueOf(arg);
+        return arg;
+    }
+
+    // ============================================================
+    // 反射工具
+    // ============================================================
+
+    public static Method findMethod(Class<?> c, String name, int argCount) {
+        for (Method m : c.getMethods()) {
+            if (m.getName().equals(name) && m.getParameterCount() == argCount) return m;
+        }
+        return null;
+    }
+
+    /** 获取目标对象上所有指定名字的 public 方法（支持多个候选名） */
+    public static List<Method> methods(Object target, String... names) {
+        if (target == null || names == null || names.length == 0) return Collections.emptyList();
+        List<Method> out = new ArrayList<>(4);
+        for (String name : names) {
+            Map<String, List<Method>> idx = METHOD_INDEX.computeIfAbsent(target.getClass(), c -> {
+                Map<String, List<Method>> m = new HashMap<>();
+                for (Method mm : c.getMethods()) {
+                    m.computeIfAbsent(mm.getName(), k -> new ArrayList<>(2)).add(mm);
+                }
+                return m;
+            });
+            List<Method> r = idx.get(name);
+            if (r != null) out.addAll(r);
+        }
+        return out;
+    }
+
+    /** 依次尝试多个候选方法名（均要求无参），返回第一个成功的结果 */
+    public static Object call(Object target, String... names) {
+        if (target == null) return null;
+        for (String name : names) {
+            for (Method m : methods(target, name)) {
+                if (m.getParameterCount() != 0) continue;
+                try {
+                    return m.invoke(target);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    public static Object unwrap(Object o) {
+        if (o instanceof Optional) return ((Optional<?>) o).orElse(null);
+        if (o instanceof OptionalInt) return ((OptionalInt) o).isPresent() ? ((OptionalInt) o).getAsInt() : null;
+        if (o instanceof OptionalLong) return ((OptionalLong) o).isPresent() ? ((OptionalLong) o).getAsLong() : null;
+        if (o instanceof OptionalDouble) return ((OptionalDouble) o).isPresent() ? ((OptionalDouble) o).getAsDouble() : null;
+        return o;
+    }
+
+    public static String asString(Object o) {
+        o = unwrap(o);
+        if (o == null) return null;
+        if (o instanceof String) return (String) o;
+        if (o instanceof Enum) return ((Enum<?>) o).name();
+        return String.valueOf(o);
+    }
+
+    public static long asLong(Object o, long def) {
+        o = unwrap(o);
+        if (o instanceof Number) return ((Number) o).longValue();
+        if (o instanceof String) {
+            try {
+                return Long.parseLong(((String) o).trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return def;
+    }
+
+    public static int asInt(Object o, int def) {
+        o = unwrap(o);
+        if (o instanceof Number) return ((Number) o).intValue();
+        if (o instanceof String) {
+            try {
+                return (int) Double.parseDouble(((String) o).trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return def;
+    }
+
+    public static double asDouble(Object o, double def) {
+        o = unwrap(o);
+        if (o instanceof Number) return ((Number) o).doubleValue();
+        if (o instanceof String) {
+            try {
+                return Double.parseDouble(((String) o).trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return def;
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable cur = t;
+        while (cur.getCause() != null && cur.getCause() != cur) cur = cur.getCause();
+        return cur.getMessage() == null ? cur.toString() : cur.getMessage();
+    }
+
+    // ============================================================
+    // Shop → ShopEntry
+    // ============================================================
+
+    public static ShopEntry toEntry(Object shop, long now) {
+        ShopEntry e = new ShopEntry();
+
+        Object id = call(shop, "getShopId");
+        e.shop_id = id == null ? "unknown" : String.valueOf(asLong(id, 0));
+
+        // 物品
+        Object item = call(shop, "getItem", "getItemStack");
+        String material = "UNKNOWN";
+        if (item != null) {
+            Object type = call(item, "getType");
+            String t = asString(type);
+            if (t != null && !t.isEmpty()) material = t;
+        }
+        e.material = material.toUpperCase(Locale.ROOT);
+
+        // 名称
+        String custom = asString(call(shop, "getName", "getShopName"));
+        if (custom != null) {
+            custom = custom.trim();
+            if (custom.isEmpty() || custom.contains("Component@") || custom.startsWith("Component{")) custom = null;
+        }
+        String cn = Materials.cn(e.material);
+        e.item_name = custom != null ? custom : cn;
+        e.shop_cn_name = custom != null && hasChinese(custom) ? custom : cn;
+        e.item_image = "item/" + Materials.imageName(e.material) + ".png";
+
+        // 店主
+        Object owner = call(shop, "getOwner");
+        if (owner != null) {
+            e.owner_name = asString(call(owner, "getUsername"));
+            Object uuid = unwrap(call(owner, "getUniqueId"));
+            if (uuid != null) e.owner_uuid = String.valueOf(uuid);
+            Object real = unwrap(call(owner, "isRealPlayer", "isPlayer"));
+            if (real instanceof Boolean) e.system_shop = !((Boolean) real);
+        }
+        if (!e.system_shop) {
+            Object unlim = unwrap(call(shop, "isUnlimited"));
+            if (unlim instanceof Boolean) e.system_shop = (Boolean) unlim;
+        }
+        if (e.owner_name == null) e.owner_name = e.system_shop ? "系统商店" : "unknown";
+
+        // 位置
+        Object loc = unwrap(call(shop, "getLocation", "bukkitLocation"));
+        if (loc != null) {
+            Object w = call(loc, "getWorld");
+            if (w != null) e.world = asString(call(w, "getName"));
+            e.x = asInt(call(loc, "getBlockX"), 0);
+            e.y = asInt(call(loc, "getBlockY"), 0);
+            e.z = asInt(call(loc, "getBlockZ"), 0);
+        }
+        if (e.world == null) e.world = "world";
+
+        // 价格 / 堆叠 / 类型
+        e.price = asDouble(call(shop, "getPrice", "shopPrice"), 0);
+        e.price_raw = e.price;
+        e.price_display = priceDisplay(e.price);
+        e.stacking_amount = Math.max(1, asInt(call(shop, "getStackAmount", "getShopStackAmount", "stackAmount"), 1));
+        e.shop_type = resolveType(shop);
+        e.price_reasonable = true;
+
+        // 库存：系统商店无限；玩家商店暂未知
+        e.quantity = e.system_shop ? -1 : null;
+        e.is_system_shop = e.system_shop ? Boolean.TRUE : null;
+
+        // 时间
+        long created = asLong(call(shop, "getCreationTime", "getCreateTime"), 0);
+        if (created > 0 && created < 1_000_000_000_000L) created *= 1000; // 秒 → 毫秒
+        if (created <= 0) created = now;
+        e.created_at_ms = created;
+        e.fetched_at = JsonUtil.iso(created);
+        e.updated_at = JsonUtil.iso(now);
+
+        return e;
+    }
+
+    private static String resolveType(Object shop) {
+        Object b = unwrap(call(shop, "isBuying"));
+        if (b instanceof Boolean) return ((Boolean) b) ? "BUYING" : "SELLING";
+        Object st = call(shop, "shopType", "getShopType");
+        if (st != null) {
+            Object b2 = unwrap(call(st, "isBuying"));
+            if (b2 instanceof Boolean) return ((Boolean) b2) ? "BUYING" : "SELLING";
+            String id = asString(call(st, "identifier", "name"));
+            if (id != null) {
+                String up = id.toUpperCase(Locale.ROOT);
+                if (up.contains("BUYING")) return "BUYING";
+                if (up.contains("SELLING")) return "SELLING";
+            }
+        }
+        return "SELLING";
+    }
+
+    /** 与前端一致的显示格式：0 → "0"；极小/极大 → 科学计数；否则千分位两位小数 */
+    public static String priceDisplay(double v) {
+        if (!Double.isFinite(v) || v < 0) v = 0;
+        if (v == 0) return "0";
+        if (v < 0.01 || v >= 1_000_000) {
+            String s = String.format(Locale.ROOT, "%.2e", v);
+            s = s.replace("e-0", "e-").replace("e+0", "e+");
+            return s;
+        }
+        return String.format(Locale.US, "%,.2f", v);
+    }
+
+    public static boolean hasChinese(String s) {
+        if (s == null) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 0x4E00 && c <= 0x9FA5) return true;
+        }
+        return false;
+    }
+}
