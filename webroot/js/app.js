@@ -1637,6 +1637,15 @@
   }
 
   // 物品详情页中的商店卡片（库存语义 + 出售/收购区分）
+  // 店主名过滤：系统商店的 i18n 占位（「无限」/Unlimited）与无效值不作为店主显示
+  function shopOwnerName(shop) {
+    if (!shop || shop.owner_name == null) return '';
+    const n = String(shop.owner_name).trim();
+    if (!n) return '';
+    if (/^(无限|unlimited|unknown|console|系统商店|n\/a|—|-)$/i.test(n)) return '';
+    return n;
+  }
+
   function renderShopDetailCard(shop) {
     const card = el('div', { class: 'shop-card shop-detail-card' });
 
@@ -1786,13 +1795,12 @@
     tr('坐标', '(' + shop.x + ', ' + shop.y + ', ' + shop.z + ')');
     if (shop.price_reasonable != null && shop.price_reasonable !== '') tr('价格合理', shop.price_reasonable === true || shop.price_reasonable === 'true' ? '是' : '否');
     if (shop.activity_score != null) tr('活跃度', shop.activity_score);
-    tr('店主', shop.owner_name || '-');
+    // 店主行：'无限' 等无效名（系统商店占位）不显示
+    const ownerShown = shopOwnerName(shop);
+    if (ownerShown) tr('店主', ownerShown);
 
-    // —— 玩家商店限制提示 ——
-    if (isSystem) {
-      tr('库存上限', '无限');
-      tr('单次收购上限', '无限');
-    } else {
+    // —— 玩家商店限制提示（系统商店不显示无意义的「无限」上限行）——
+    if (!isSystem) {
       const stockMax = isBuying
         ? (shop.max_buy_quantity != null ? String(shop.max_buy_quantity) : '1000')
         : (shop.max_stock_capacity != null ? String(shop.max_stock_capacity) : '2000');
@@ -1898,7 +1906,8 @@
     tr('堆叠', shop.stacking_amount || 1);
     tr('世界', shop.world || '-');
     tr('坐标', '(' + shop.x + ', ' + shop.y + ', ' + shop.z + ')');
-    tr('店主', shop.owner_name || '-');
+    const ownerShownShop = shopOwnerName(shop);
+    if (ownerShownShop) tr('店主', ownerShownShop);
 
     // —— 在线购买按钮（仅出售商店）——
     if (shop.shop_type !== 'BUYING') {
@@ -1923,6 +1932,7 @@
       : unitPrice.toFixed(2);
     const stackAmount = Math.max(1, parseInt(shop.stacking_amount, 10) || 1);
     const itemName = shop.shop_cn_name || shop.item_name || shop.material || '物品';
+    const ownerName = shopOwnerName(shop);
 
     let savedName = '';
     try { savedName = localStorage.getItem('qsw_player_name') || ''; } catch (e) { }
@@ -1956,7 +1966,7 @@
         }) : null,
         el('div', { style: { minWidth: '0', flex: '1' } }, [
           el('div', { class: 'purchase-name', text: itemName }),
-          el('div', { class: 'purchase-sub', text: '店主: ' + (shop.owner_name || '系统商店') + ' · 世界: ' + (shop.world || '-') + ' · (' + shop.x + ', ' + shop.y + ', ' + shop.z + ')' })
+          el('div', { class: 'purchase-sub', text: (ownerName ? '店主: ' + ownerName + ' · ' : '') + '世界: ' + (shop.world || '-') + ' · (' + shop.x + ', ' + shop.y + ', ' + shop.z + ')' })
         ])
       ]),
       el('div', { class: 'purchase-field' }, [

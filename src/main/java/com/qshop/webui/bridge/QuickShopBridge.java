@@ -496,6 +496,13 @@ public final class QuickShopBridge {
             Object unlim = unwrap(call(shop, "isUnlimited"));
             if (unlim instanceof Boolean && (Boolean) unlim) e.system_shop = true;
         }
+        // 系统商店的 owner 名是 QuickShop 的 i18n 占位（中文里是「无限」），不作为店主显示
+        if (e.system_shop && e.owner_name != null) {
+            String on = e.owner_name.trim().toLowerCase(Locale.ROOT);
+            if (on.equals("无限") || on.equals("unlimited") || on.equals("console")) {
+                e.owner_name = null;
+            }
+        }
         if (e.owner_name == null || e.owner_name.trim().isEmpty()) {
             e.owner_name = e.system_shop ? "系统商店" : "unknown";
         }

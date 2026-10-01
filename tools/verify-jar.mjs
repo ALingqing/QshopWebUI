@@ -38,5 +38,11 @@ check('web/js/db.js', 'purchaseShop', 'db.js purchaseShop API');
 check('web/css/style.css', 'Online purchase (web buy)', 'style.css 购买样式');
 check('config.yml', 'purchase:', 'config.yml purchase 段');
 check('plugin.yml', 'QShopWebUI', 'plugin.yml');
+{
+  const txt = fs.readFileSync(path.join(tmp, 'web/js/app.js'), 'utf8');
+  console.log('app.js 店主过滤 shopOwnerName: ' + (txt.includes('shopOwnerName') ? '✓' : '!! 未找到'));
+  console.log('app.js 旧店主行已清除: ' + (txt.includes("tr('店主', shop.owner_name") ? '!! 仍有残留' : '✓'));
+  console.log('app.js 「库存上限:无限」行已清除: ' + (txt.includes("'库存上限'") ? '!! 仍有残留' : '✓'));
+}
 console.log('jar 条目总数: ' + all.length + '，大小: ' + (fs.statSync(jar).size / 1024 / 1024).toFixed(2) + ' MB');
 fs.rmSync(tmp, { recursive: true, force: true });
