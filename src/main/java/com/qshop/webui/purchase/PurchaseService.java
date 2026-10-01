@@ -151,7 +151,8 @@ public final class PurchaseService {
                 long id = parseLong(entry.shop_id);
                 Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
                 Inventory chestInv = shop == null ? null : resolveInventory(shop);
-                ItemStack sample = findSample(chestInv);
+                ItemStack sample = shopItemSample(shop);
+                if (sample == null) sample = findSample(chestInv);
                 if (sample == null) sample = fallbackItem(entry);
                 int count = sample == null ? 0 : countItems(p.getInventory(), sample);
                 int stack = Math.max(1, entry.stacking_amount);
@@ -187,16 +188,16 @@ public final class PurchaseService {
         Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
         Inventory chestInv = shop == null ? null : resolveInventory(shop);
 
-        // 样品物品：优先从商店箱子拿实物（含附魔/NBT）
-        ItemStack sample = findSample(chestInv);
+        // 样品物品：优先 QuickShop 商品数据（不依赖容器）→ 容器实物 → 基础材质
+        ItemStack sample = shopItemSample(shop);
+        if (sample == null) sample = findSample(chestInv);
         if (sample == null) sample = fallbackItem(e);
         if (sample == null) return err("无法确定该商店的物品");
 
         long needItems = (long) amount * Math.max(1, e.stacking_amount);
 
-        // 库存检查（非系统商店）
-        if (!e.system_shop) {
-            if (chestInv == null) return err("无法访问商店库存容器（商店所在区块加载失败或容器已被移除）");
+        // 库存检查（仅容器可访问时；容器不可访问则虚拟发货，不依赖容器）
+        if (!e.system_shop && chestInv != null) {
             int available = countItems(chestInv, sample);
             if (available < needItems) {
                 long canBuy = available / Math.max(1, e.stacking_amount);
@@ -222,8 +223,12 @@ public final class PurchaseService {
         }
 
         try {
-            if (!e.system_shop && chestInv != null) {
-                removeItems(chestInv, sample, needItems);
+            if (!e.system_shop) {
+                if (chestInv != null) {
+                    removeItems(chestInv, sample, needItems);
+                } else {
+                    plugin.getLogger().warning("[购买] 商店 #" + e.shop_id + " 容器不可访问：虚拟发货（未从箱子扣除）");
+                }
             }
             if (online) {
                 deliverItems(buyer, sample, needItems);
@@ -303,7 +308,8 @@ public final class PurchaseService {
         Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
         Inventory chestInv = shop == null ? null : resolveInventory(shop);
 
-        ItemStack sample = findSample(chestInv);
+        ItemStack sample = shopItemSample(shop);
+        if (sample == null) sample = findSample(chestInv);
         if (sample == null) sample = fallbackItem(e);
         if (sample == null) return err("无法确定该商店的物品");
 
@@ -317,11 +323,12 @@ public final class PurchaseService {
             return err("背包里没有足够的「" + e.shop_cn_name + "」：当前可卖 " + canSell + " 份（需要 " + needItems + " 个，现有 " + available + " 个）");
         }
 
-        // 2) 非系统商店：容器容量 + 店主余额
+        // 2) 非系统商店：容器容量（仅容器可访问时检查）+ 店主余额
         OfflinePlayer owner = null;
         if (!e.system_shop) {
-            if (chestInv == null) return err("无法访问商店库存容器（商店所在区块加载失败或容器已被移除）");
-            if (!canFit(chestInv, sample, needItems)) return err("商店容器已满，暂时无法收购更多");
+            if (chestInv != null && !canFit(chestInv, sample, needItems)) {
+                return err("商店容器已满，暂时无法收购更多");
+            }
             if (e.owner_uuid != null) {
                 try {
                     owner = Bukkit.getOfflinePlayer(UUID.fromString(e.owner_uuid));
@@ -339,10 +346,14 @@ public final class PurchaseService {
         }
 
         try {
-            // 4) 玩家物品 → 商店容器
+            // 4) 玩家物品 → 商店容器（容器不可访问时跳过，不依赖容器）
             removeItems(seller.getInventory(), sample, needItems);
-            if (!e.system_shop && chestInv != null) {
-                addItems(chestInv, sample, needItems);
+            if (!e.system_shop) {
+                if (chestInv != null) {
+                    addItems(chestInv, sample, needItems);
+                } else {
+                    plugin.getLogger().warning("[收购] 商店 #" + e.shop_id + " 容器不可访问：收到的 " + needItems + " 个物品未入箱");
+                }
             }
             // 5) 报酬到账
             if (!eco.deposit(seller, total)) {
@@ -376,6 +387,17 @@ public final class PurchaseService {
     // ============================================================
     // 工具
     // ============================================================
+
+    /** QuickShop 商店的商品数据（含附魔/NBT）；不依赖容器 */
+    private static ItemStack shopItemSample(Object shop) {
+        if (shop == null) return null;
+        try {
+            Object item = QuickShopBridge.unwrap(QuickShopBridge.call(shop, "getItem"));
+            if (item instanceof ItemStack) return ((ItemStack) item).clone();
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
 
     private Inventory resolveInventory(Object shop) {
         try {
