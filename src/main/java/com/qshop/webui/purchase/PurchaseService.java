@@ -151,9 +151,7 @@ public final class PurchaseService {
                 long id = parseLong(entry.shop_id);
                 Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
                 Inventory chestInv = shop == null ? null : resolveInventory(shop);
-                ItemStack sample = shopItemSample(shop);
-                if (sample == null) sample = findSample(chestInv);
-                if (sample == null) sample = fallbackItem(entry);
+                ItemStack sample = resolveSample(entry, shop, chestInv);
                 int count = sample == null ? 0 : countItems(p.getInventory(), sample);
                 int stack = Math.max(1, entry.stacking_amount);
                 o.addProperty("success", true);
@@ -188,10 +186,8 @@ public final class PurchaseService {
         Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
         Inventory chestInv = shop == null ? null : resolveInventory(shop);
 
-        // 样品物品：优先 QuickShop 商品数据（不依赖容器）→ 容器实物 → 基础材质
-        ItemStack sample = shopItemSample(shop);
-        if (sample == null) sample = findSample(chestInv);
-        if (sample == null) sample = fallbackItem(e);
+        // 样品物品：容器实物（NBT 最完整）→ QuickShop 数据 → 基础材质；玩家头皮肤双源补齐
+        ItemStack sample = resolveSample(e, shop, chestInv);
         if (sample == null) return err("无法确定该商店的物品");
 
         long needItems = (long) amount * Math.max(1, e.stacking_amount);
@@ -308,9 +304,7 @@ public final class PurchaseService {
         Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
         Inventory chestInv = shop == null ? null : resolveInventory(shop);
 
-        ItemStack sample = shopItemSample(shop);
-        if (sample == null) sample = findSample(chestInv);
-        if (sample == null) sample = fallbackItem(e);
+        ItemStack sample = resolveSample(e, shop, chestInv);
         if (sample == null) return err("无法确定该商店的物品");
 
         int stack = Math.max(1, e.stacking_amount);
@@ -397,6 +391,50 @@ public final class PurchaseService {
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    /**
+     * 样品物品：容器实物（NBT 最完整）→ QuickShop 商品数据（不依赖容器）→ 基础材质。
+     * 玩家头缺皮肤时两个来源相互补齐；仍缺则记日志便于排查。
+     */
+    private ItemStack resolveSample(ShopEntry e, Object shop, Inventory chestInv) {
+        ItemStack fromChest = findSample(chestInv);
+        ItemStack fromShop = shopItemSample(shop);
+        ItemStack sample = fromChest != null ? fromChest : fromShop;
+        if (sample == null) sample = fallbackItem(e);
+        if (sample == null) return null;
+        // 玩家头：缺皮肤时用有皮肤的另一个来源
+        if (isHead(sample) && !hasSkullOwner(sample)) {
+            ItemStack alt = (sample == fromChest) ? fromShop : fromChest;
+            if (alt != null && isHead(alt) && hasSkullOwner(alt)) sample = alt;
+        }
+        // 诊断：仍无皮肤时记录来源（容器:可/不可访问）
+        if (isHead(sample) && !hasSkullOwner(sample)) {
+            String src = (sample == fromChest) ? "容器" : (sample == fromShop) ? "QuickShop数据" : "基础材质";
+            plugin.getLogger().warning("[样品] 商店 #" + e.shop_id + " 的玩家头缺少皮肤数据（来源: " + src
+                    + "，容器:" + (chestInv != null ? "可访问" : "不可访问") + "）");
+        }
+        return sample;
+    }
+
+    private static boolean isHead(ItemStack item) {
+        if (item == null) return false;
+        String n = item.getType().name();
+        return n.contains("HEAD") || n.contains("SKULL");
+    }
+
+    private static boolean hasSkullOwner(ItemStack item) {
+        try {
+            Object meta = item.getItemMeta();
+            if (meta == null) return false;
+            Object own = QuickShopBridge.call(meta, "getOwningPlayer");
+            if (own != null) return true;
+            Object own2 = QuickShopBridge.call(meta, "getOwner");
+            if (own2 instanceof String) return !((String) own2).isEmpty();
+            if (own2 != null) return true;
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private Inventory resolveInventory(Object shop) {
