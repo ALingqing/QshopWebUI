@@ -2,6 +2,9 @@
 target/
 *.class
 
+# 临时文件
+qs-export-tmp/
+
 # IDE
 .idea/
 *.iml

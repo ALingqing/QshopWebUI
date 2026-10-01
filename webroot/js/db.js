@@ -1099,6 +1099,15 @@
       } catch (e) {
         return { success: false, error: e.message };
       }
+    },
+    // 导入 QuickShop 历史交易（自动执行 /qs export 并解析导出包）
+    importTradeHistory: async function () {
+      try {
+        const data = await apiCall('/trades/import', { method: 'POST', body: {} });
+        return data || { success: false };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
   };
 

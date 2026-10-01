@@ -601,12 +601,32 @@ public final class WebStore {
         }
     }
 
-    /** 记录一笔交易（购买/收购） */
+    /** 记录一笔交易（购买/收购），按时间有序插入 */
     public synchronized void addTrade(JsonObject t) {
         if (t == null) return;
-        trades.add(t);
+        long ts = t.has("t") ? t.get("t").getAsLong() : System.currentTimeMillis();
+        int idx = trades.size();
+        while (idx > 0 && tradeTs(trades.get(idx - 1)) > ts) idx--;
+        trades.add(idx, t);
         while (trades.size() > MAX_TRADES) trades.remove(0);
         saveTrades();
+    }
+
+    /** 批量记录交易（历史导入用，只写盘一次） */
+    public synchronized void addTrades(List<JsonObject> list) {
+        if (list == null || list.isEmpty()) return;
+        trades.addAll(list);
+        trades.sort((a, b) -> Long.compare(tradeTs(a), tradeTs(b)));
+        while (trades.size() > MAX_TRADES) trades.remove(0);
+        saveTrades();
+    }
+
+    private static long tradeTs(JsonObject t) {
+        try {
+            return t != null && t.has("t") ? t.get("t").getAsLong() : 0L;
+        } catch (Exception e) {
+            return 0L;
+        }
     }
 
     /** 全部交易记录快照 */

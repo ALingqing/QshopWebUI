@@ -100,6 +100,17 @@ public final class AdminApi extends ApiBase {
     }
 
     // ============================================================
+    // POST /api/trades/import  导入 QuickShop 历史交易（/qs export）
+    // ============================================================
+
+    public HttpResponse tradeImport(HttpRequest req) {
+        HttpResponse deny = adminOnly(req);
+        if (deny != null) return deny;
+        JsonObject o = new com.qshop.webui.history.HistoryImporter(plugin).run();
+        return HttpResponse.json(o);
+    }
+
+    // ============================================================
     // GET /api/admin/shops/search
     // ============================================================
 

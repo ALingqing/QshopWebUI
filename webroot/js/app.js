@@ -512,6 +512,71 @@
     }
   };
 
+  // ============================================================
+  // 交易记录导出 / QuickShop 历史交易导入（统计中心 + 数据导入导出页共用）
+  // ============================================================
+
+  function tradesToCsv(trades) {
+    const head = ['时间', '类型', '来源', '玩家', '物品', '材质', '份数', '物品数量', '单价', '总额', '税收', '商店ID', '店主', '玩家在线'];
+    const cell = function (v) {
+      const s = String(v == null ? '' : v);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    const srcLabel = function (src) { return src === 'game' ? '游戏内' : src === 'history' ? '历史导入' : '网页'; };
+    const rows = trades.map(function (t) {
+      const d = new Date(Number(t.t) || 0);
+      const time = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      return [time, t.type === 'BUY' ? '购买' : '收购', srcLabel(t.source), t.player, t.item, t.material,
+        t.amount, t.items, t.unit_price, t.total, t.tax == null ? '' : t.tax, t.shop_id, t.owner, t.online ? '是' : '否'];
+    });
+    return '\uFEFF' + [head].concat(rows).map(function (r) { return r.map(cell).join(','); }).join('\r\n');
+  }
+
+  // 导出交易记录 CSV（cache 可选：已有明细时直接传，避免重复请求）
+  async function exportTradesCsv(cache) {
+    let trades = cache;
+    if (!trades || !trades.length) {
+      const r = await QSDB.getTrades();
+      if (!r || !r.success) { Toast.show('读取失败: ' + ((r && r.error) || '需要管理员登录'), 'error'); return; }
+      trades = r.trades || [];
+    }
+    if (!trades.length) { Toast.show('暂无交易记录', 'warning'); return; }
+    const blob = new Blob([tradesToCsv(trades)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qshop-trades-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+    Toast.show('已导出 ' + trades.length + ' 条交易记录', 'success');
+  }
+
+  // 导入 QuickShop 历史交易（自动 /qs export + 解析导入）；onDone 为成功后的刷新回调
+  function importQsHistory(onDone) {
+    Modal.confirm({
+      title: '导入 QuickShop 历史交易',
+      danger: false,
+      body: '<div>将自动执行 <b>/qs export</b> 导出 QuickShop 数据库，并把<b>历史购买 / 收购记录</b>导入本站交易统计。</div>'
+        + '<div class="hint" style="margin-top:6px">统计功能上线之前发生的游戏内交易也会被一并找回；重复导入会自动去重。</div>',
+      confirmText: '开始导入',
+      onConfirm: async function () {
+        Toast.show('正在导出 QuickShop 数据并导入，请稍候...', 'info');
+        const r = await QSDB.importTradeHistory();
+        if (r && r.success) {
+          let msg = '导入完成：新增 ' + (r.imported || 0) + ' 条历史交易';
+          if (r.skipped) msg += '，跳过已有 ' + r.skipped + ' 条';
+          if (!r.fresh) msg += '（使用了已有导出包）';
+          Toast.show(msg, 'success');
+          if (typeof onDone === 'function') onDone();
+        } else {
+          Toast.show('导入失败: ' + ((r && r.error) || '未知错误'), 'error');
+        }
+      }
+    });
+  }
+
   //  服务器名称（config.yml 的 server-name）：显示在浏览器标题、导航栏、首页大标题
   let siteServerName = '';
   let siteServerSubtitle = '';
@@ -2554,8 +2619,10 @@
     tradeCard.appendChild(tradeRanks);
     const tradeBtns = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } });
     const exportTradesBtn = el('button', { class: 'neo-btn primary', text: '导出交易记录 CSV' });
+    const importHistoryBtn = el('button', { class: 'neo-btn', text: '📥 导入 QuickShop 历史交易' });
     const clearTradesBtn = el('button', { class: 'neo-btn danger', text: '清空交易记录' });
     tradeBtns.appendChild(exportTradesBtn);
+    tradeBtns.appendChild(importHistoryBtn);
     tradeBtns.appendChild(clearTradesBtn);
     tradeCard.appendChild(tradeBtns);
     root.appendChild(tradeCard);
@@ -2733,29 +2800,10 @@
       tradeRanks.appendChild(rankPanel('🏬 商店热度榜 Top10', shops, function (s) { return s.count + ' 笔 · $' + num2(s.amount); }));
     }
     exportTradesBtn.onclick = function () {
-      if (!tradesCache.length) { Toast.show('暂无交易记录', 'warning'); return; }
-      const head = ['时间', '类型', '来源', '玩家', '物品', '材质', '份数', '物品数量', '单价', '总额', '税收', '商店ID', '店主', '玩家在线'];
-      const cell = function (v) {
-        const s = String(v == null ? '' : v);
-        return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-      };
-      const pad = function (n) { return (n < 10 ? '0' : '') + n; };
-      const rows = tradesCache.map(function (t) {
-        const d = new Date(Number(t.t) || 0);
-        const time = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-        return [time, t.type === 'BUY' ? '购买' : '收购', t.source === 'game' ? '游戏内' : '网页', t.player, t.item, t.material,
-          t.amount, t.items, t.unit_price, t.total, t.tax == null ? '' : t.tax, t.shop_id, t.owner, t.online ? '是' : '否'];
-      });
-      const csv = '\uFEFF' + [head].concat(rows).map(function (r) { return r.map(cell).join(','); }).join('\r\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'qshop-trades-' + new Date().toISOString().slice(0, 10) + '.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
-      Toast.show('已导出 ' + tradesCache.length + ' 条交易记录', 'success');
+      exportTradesCsv(tradesCache);
+    };
+    importHistoryBtn.onclick = function () {
+      importQsHistory(loadTradesPanel);
     };
     clearTradesBtn.onclick = function () {
       Modal.confirm({
@@ -3217,7 +3265,7 @@
     // 导出
     const exportCard = el('div', { class: 'admin-card' }, [
       el('h3', { text: '导出数据' }),
-      el('p', { class: 'hint', text: '将当前系统中的商店数据导出为 JSON 或 CSV 文件，可用于备份或外部分析。' })
+      el('p', { class: 'hint', text: '商店数据可导出为 JSON / CSV；交易记录（网页 + 游戏内 + 历史导入）可导出为 CSV，用于统计分析和外部分析。' })
     ]);
     const exportBtn = el('button', { class: 'neo-btn primary', text: '导出为 JSON',
       onclick: async () => {
@@ -3257,6 +3305,14 @@
     });
     const btnRow1 = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' } });
     btnRow1.appendChild(exportBtn); btnRow1.appendChild(exportCsvBtn);
+    const exportTradesCsvBtn = el('button', { class: 'neo-btn', text: '导出交易记录 CSV',
+      onclick: function () { exportTradesCsv(); }
+    });
+    const importHistoryBtn2 = el('button', { class: 'neo-btn', text: '📥 导入 QuickShop 历史交易',
+      onclick: function () { importQsHistory(); }
+    });
+    btnRow1.appendChild(exportTradesCsvBtn);
+    btnRow1.appendChild(importHistoryBtn2);
     exportCard.appendChild(btnRow1);
     root.appendChild(exportCard);
 

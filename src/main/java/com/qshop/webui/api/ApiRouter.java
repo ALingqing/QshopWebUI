@@ -195,6 +195,9 @@ public final class ApiRouter {
             case "/api/trades/clear":
                 return adminApi.tradeClear(req);
 
+            case "/api/trades/import":
+                return adminApi.tradeImport(req);
+
             case "/api/harbor":
                 if ("GET".equals(m)) return shopApi.harborGet(req);
                 if ("PUT".equals(m)) return shopApi.harborPut(req);
