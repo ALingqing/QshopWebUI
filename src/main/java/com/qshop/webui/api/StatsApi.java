@@ -105,6 +105,8 @@ public final class StatsApi extends ApiBase {
         put(o, "success", true);
         put(o, "status", qs ? "online" : "degraded");
         put(o, "version", plugin.getDescription().getVersion());
+        String sn = plugin.config().serverName;
+        put(o, "server_name", (sn == null || sn.isEmpty()) ? null : sn);
         put(o, "timestamp", JsonUtil.isoNow());
         put(o, "response_time_ms", System.currentTimeMillis() - t0);
         o.add("qsfilter", qsfilterBlock());

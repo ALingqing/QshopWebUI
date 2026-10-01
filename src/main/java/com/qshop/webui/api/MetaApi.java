@@ -23,7 +23,9 @@ public final class MetaApi extends ApiBase {
 
     public HttpResponse config(HttpRequest req) {
         JsonObject c = obj();
-        put(c, "app_name", "QshopWebUI");
+        String sn = plugin.config().serverName;
+        put(c, "app_name", (sn == null || sn.isEmpty()) ? "QshopWebUI" : sn);
+        put(c, "server_name", (sn == null || sn.isEmpty()) ? null : sn);
         put(c, "default_page_size", plugin.config().defaultPageSize);
         put(c, "max_page_size", plugin.config().maxPageSize);
         put(c, "search_min_length", 2);

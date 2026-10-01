@@ -33,6 +33,9 @@ public final class PluginConfig {
     public boolean purchaseEnabled = true;
     public int purchaseMaxAmount = 64;
 
+    // === 网站显示 ===
+    public String serverName = "";
+
     // === 运行时解析结果 ===
     public boolean multiplex = false;
     public int mcPortResolved = 0;
@@ -60,6 +63,7 @@ public final class PluginConfig {
         cfg.playerShopLowStockThreshold = c.getInt("shop.player-low-stock-threshold", 10);
         cfg.purchaseEnabled = c.getBoolean("purchase.enabled", true);
         cfg.purchaseMaxAmount = Math.max(1, c.getInt("purchase.max-amount", 64));
+        cfg.serverName = c.getString("server-name", "").trim();
         return cfg;
     }
 

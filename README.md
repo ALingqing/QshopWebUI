@@ -75,6 +75,7 @@ mc-port: 0         # 0 = 自动读取服务器当前端口（即改了之后的 
 ## 三、配置说明（`plugins/QShopWebUI/config.yml`）
 
 ```yaml
+server-name: ""        # 网站显示名称（服务器名称）：浏览器标题/导航栏/首页大标题；留空用默认
 port: 20130            # 监听端口
 bind: 0.0.0.0          # 绑定网卡
 mode: auto             # standalone / multiplex / auto
@@ -93,8 +94,17 @@ web:
   max-body-size: 10485760
   access-log: false    # true = 控制台输出每个网页请求
   snapshot-ttl-ms: 5000 # QuickShop 数据快照缓存（毫秒）
+purchase:
+  enabled: true          # 网页在线购买（玩家需在线；需 Vault 经济插件）
+  max-amount: 64         # 单次最多购买份数
 debug: false
 ```
+
+### 自定义网站外观
+
+除了 `server-name`，想完全自定义网页时：在 `plugins/QShopWebUI/` 下新建 `web/` 目录，
+放一份从本插件 jar 解出的网页文件（`index.html` / `css/` / `js/`），
+磁盘上的文件会**优先于** jar 内置副本被使用（改什么生效什么）。
 
 ---
 
