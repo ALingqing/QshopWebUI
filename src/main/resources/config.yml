@@ -61,6 +61,8 @@ purchase:
   enabled: true
   # 单次最多购买份数（1 份 = 商店的 stacking_amount 个物品）
   max-amount: 64
+  # 用游戏账号（AuthMe）登录后是否允许离线购买（物品会在玩家上线时自动发放）
+  allow-offline-buy: true
 
 # 页面可见性：隐藏不需要的前台页面（true = 隐藏）
 # 网页后台「数据管理」页可随时切换（后台设置优先于这里）；管理员登录后仍可见

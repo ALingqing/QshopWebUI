@@ -19,8 +19,10 @@ public final class PurchaseApi extends ApiBase {
         JsonObject b = body(req);
         String shopId = jstr(b, "shop_id", "");
         String player = jstr(b, "player", "");
+        String password = jstr(b, "password", "");
         int amount = jint(b, "amount", 1);
-        JsonObject result = plugin.purchases().purchase(shopId, player, amount);
+        String sessionPlayer = plugin.sessions().playerOf(req);
+        JsonObject result = plugin.purchases().purchase(shopId, player, amount, sessionPlayer, password);
         return HttpResponse.json(result);
     }
 
@@ -31,8 +33,20 @@ public final class PurchaseApi extends ApiBase {
         JsonObject b = body(req);
         String shopId = jstr(b, "shop_id", "");
         String player = jstr(b, "player", "");
+        String password = jstr(b, "password", "");
         int amount = jint(b, "amount", 1);
-        JsonObject result = plugin.purchases().sell(shopId, player, amount);
+        String sessionPlayer = plugin.sessions().playerOf(req);
+        JsonObject result = plugin.purchases().sell(shopId, player, amount, sessionPlayer, password);
+        return HttpResponse.json(result);
+    }
+
+    /** POST /api/inventory-check：查询在线玩家背包中该商店物品数量（收购「最大」按钮） */
+    public HttpResponse inventoryCheck(HttpRequest req) {
+        JsonObject b = body(req);
+        String shopId = jstr(b, "shop_id", "");
+        String player = jstr(b, "player", "");
+        String sessionPlayer = plugin.sessions().playerOf(req);
+        JsonObject result = plugin.purchases().inventoryCheck(shopId, player, sessionPlayer);
         return HttpResponse.json(result);
     }
 }

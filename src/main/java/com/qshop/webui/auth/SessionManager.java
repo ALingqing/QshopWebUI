@@ -68,6 +68,13 @@ public final class SessionManager {
         return get(req.header("x-session"));
     }
 
+    /** 玩家会话的玩家名（非玩家会话/未登录返回 null） */
+    public String playerOf(HttpRequest req) {
+        Session s = fromRequest(req);
+        if (s == null) return null;
+        return "player".equals(s.role) ? s.username : null;
+    }
+
     public void remove(String sid) {
         if (sid != null) sessions.remove(sid);
     }

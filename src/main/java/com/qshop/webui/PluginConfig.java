@@ -32,6 +32,8 @@ public final class PluginConfig {
     // === 网页在线购买 ===
     public boolean purchaseEnabled = true;
     public int purchaseMaxAmount = 64;
+    /** 登录（游戏账号）后是否允许离线购买（物品上线时发放） */
+    public boolean allowOfflineBuy = true;
 
     // === 网站显示 ===
     public String serverName = "";
@@ -67,6 +69,7 @@ public final class PluginConfig {
         cfg.playerShopLowStockThreshold = c.getInt("shop.player-low-stock-threshold", 10);
         cfg.purchaseEnabled = c.getBoolean("purchase.enabled", true);
         cfg.purchaseMaxAmount = Math.max(1, c.getInt("purchase.max-amount", 64));
+        cfg.allowOfflineBuy = c.getBoolean("purchase.allow-offline-buy", true);
         cfg.serverName = c.getString("server-name", "").trim();
         cfg.serverSubtitle = c.getString("server-subtitle", "").trim();
         for (String k : new String[]{"home", "buy", "sell", "browse", "shops", "stats"}) {

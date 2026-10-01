@@ -649,6 +649,49 @@
     }
   }
 
+  async function playerLogin(username, password) {
+    try {
+      const data = await apiCall('/auth/player-login', {
+        method: 'POST',
+        body: { username: String(username || '').trim(), password: String(password || '') }
+      });
+      if (!data.success) throw new Error(data.error || '登录失败');
+      authState.sessionId = data.session_id;
+      authState.username = data.player || username;
+      authState.role = 'player';
+      authState.expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+      saveLocalSession();
+      return {
+        success: true,
+        session_id: data.session_id,
+        player: authState.username,
+        balance: data.balance,
+        currency: data.currency,
+        pending_items: data.pending_items
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  async function getWallet(player) {
+    try {
+      const data = await apiCall('/wallet', { method: 'POST', body: { player: String(player || '') } });
+      return data || { success: false };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async function inventoryCheck(shopId, player) {
+    try {
+      const data = await apiCall('/inventory-check', { method: 'POST', body: { shop_id: String(shopId || ''), player: String(player || '') } });
+      return data || { success: false };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
   async function logout() {
     try {
       if (authState.sessionId) {
@@ -782,6 +825,9 @@
     getConfig: getConfig,
 
     login: login,
+    playerLogin: playerLogin,
+    getWallet: getWallet,
+    inventoryCheck: inventoryCheck,
     logout: logout,
     register: registerUser,
     checkAuth: checkAuth,
@@ -1001,12 +1047,12 @@
       }
     },
 
-    // 网页「在线购买」：玩家必须在游戏内在线
-    purchaseShop: async function (shopId, player, amount) {
+    // 网页「在线购买」：未登录需在线+游戏密码验证；登录后可离线购买
+    purchaseShop: async function (shopId, player, amount, password) {
       try {
         const data = await apiCall('/purchase', {
           method: 'POST',
-          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1 }
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
         });
         return data || { success: false, error: '服务器无响应' };
       } catch (e) {
@@ -1014,12 +1060,12 @@
       }
     },
 
-    // 网页「在线出售」（卖给收购商店）：玩家必须在游戏内在线
-    sellShop: async function (shopId, player, amount) {
+    // 网页「在线出售」（卖给收购商店）：未登录需在线+游戏密码验证
+    sellShop: async function (shopId, player, amount, password) {
       try {
         const data = await apiCall('/sell', {
           method: 'POST',
-          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1 }
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
         });
         return data || { success: false, error: '服务器无响应' };
       } catch (e) {

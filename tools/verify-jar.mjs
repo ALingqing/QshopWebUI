@@ -21,7 +21,7 @@ const walk = (d, acc = []) => {
 };
 const all = walk(tmp);
 
-for (const n of ['PurchaseService.class', 'PurchaseApi.class', 'EconomyBridge.class']) {
+for (const n of ['PurchaseService.class', 'PurchaseApi.class', 'EconomyBridge.class', 'AuthMeBridge.class', 'ItemCodec.class', 'PurchaseJoinListener.class']) {
   const hit = all.filter((x) => x.includes(n));
   console.log(n + ': ' + (hit.length ? hit.join(', ') : '!! 缺失'));
 }
@@ -39,7 +39,9 @@ check('web/js/app.js', 'initSellPage', 'app.js 收购界面');
 check('web/index.html', 'data-tab="sell"', 'index.html 收购导航');
 check('web/js/db.js', 'purchaseShop', 'db.js purchaseShop API');
 check('web/js/db.js', 'sellShop', 'db.js sellShop API');
-check('web/css/style.css', 'Online purchase (web buy)', 'style.css 购买样式');
+check('web/js/db.js', 'playerLogin', 'db.js playerLogin API');
+check('web/js/db.js', 'inventoryCheck', 'db.js inventoryCheck API');
+check('web/css/style.css', '多设备适配', 'style.css 响应式');
 check('config.yml', 'purchase:', 'config.yml purchase 段');
 check('plugin.yml', 'QShopWebUI', 'plugin.yml');
 check('custom_lang_zh_cn.json', 'item.dnt.', '数据包翻译表');

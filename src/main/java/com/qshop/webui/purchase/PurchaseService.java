@@ -5,6 +5,7 @@ import com.qshop.webui.QShopWebUIPlugin;
 import com.qshop.webui.bridge.EconomyBridge;
 import com.qshop.webui.bridge.QuickShopBridge;
 import com.qshop.webui.data.ShopEntry;
+import com.qshop.webui.util.ItemCodec;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -34,10 +35,11 @@ public final class PurchaseService {
         this.plugin = plugin;
     }
 
-    public JsonObject purchase(String shopId, String playerName, int amount) {
+    public JsonObject purchase(String shopId, String playerName, int amount, String sessionPlayer, String password) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
-        if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
-        final String name = playerName.trim();
+        final boolean logged = sessionPlayer != null && !sessionPlayer.trim().isEmpty();
+        if (!logged && (playerName == null || playerName.trim().isEmpty())) return err("请输入你的游戏 ID（或先用游戏账号登录）");
+        final String name = logged ? sessionPlayer.trim() : playerName.trim();
         int max = plugin.config().purchaseMaxAmount;
         final int amt = Math.max(1, Math.min(amount <= 0 ? 1 : amount, max));
 
@@ -47,6 +49,16 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
+        // 未登录：需要验证该玩家的游戏密码（AuthMe），防止冒用他人账号
+        if (!logged && plugin.authme().available()) {
+            if (password == null || password.isEmpty()) {
+                return err("未登录状态下需要验证游戏密码（AuthMe 密码）");
+            }
+            if (!plugin.authme().checkPassword(name, password)) {
+                return err("游戏密码验证失败（请输入该游戏账号的 AuthMe 密码）");
+            }
+        }
+
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
             if (shopId.trim().equals(s.shop_id)) {
@@ -55,22 +67,23 @@ public final class PurchaseService {
             }
         }
         if (found == null) return err("商店不存在或数据未同步");
-        if (!found.isSelling()) return err("这是收购商店，网页暂不支持");
+        if (!found.isSelling()) return err("这是收购商店，请到「收购界面」操作");
         if (!(found.price > 0)) return err("该商店价格无效");
 
         final ShopEntry entry = found;
         try {
-            return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt));
+            return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt, logged));
         } catch (Throwable t) {
             return err("交易执行失败: " + t.getMessage());
         }
     }
 
     /** 玩家出售给收购商店（网页收购界面） */
-    public JsonObject sell(String shopId, String playerName, int amount) {
+    public JsonObject sell(String shopId, String playerName, int amount, String sessionPlayer, String password) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
-        if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
-        final String name = playerName.trim();
+        final boolean logged = sessionPlayer != null && !sessionPlayer.trim().isEmpty();
+        if (!logged && (playerName == null || playerName.trim().isEmpty())) return err("请输入你的游戏 ID（或先用游戏账号登录）");
+        final String name = logged ? sessionPlayer.trim() : playerName.trim();
         int max = plugin.config().purchaseMaxAmount;
         final int amt = Math.max(1, Math.min(amount <= 0 ? 1 : amount, max));
 
@@ -78,6 +91,16 @@ public final class PurchaseService {
         Long last = cooldown.get(name.toLowerCase(Locale.ROOT));
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
+
+        // 未登录：需要验证该玩家的游戏密码（AuthMe），防止冒用他人账号
+        if (!logged && plugin.authme().available()) {
+            if (password == null || password.isEmpty()) {
+                return err("未登录状态下需要验证游戏密码（AuthMe 密码）");
+            }
+            if (!plugin.authme().checkPassword(name, password)) {
+                return err("游戏密码验证失败（请输入该游戏账号的 AuthMe 密码）");
+            }
+        }
 
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
@@ -98,10 +121,61 @@ public final class PurchaseService {
         }
     }
 
-    private JsonObject doPurchase(ShopEntry e, String name, int amount) {
+    /** 查询在线玩家背包中该商店物品的数量（收购界面「最大」按钮用） */
+    public JsonObject inventoryCheck(String shopId, String playerName, String sessionPlayer) {
+        if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
+        final boolean logged = sessionPlayer != null && !sessionPlayer.trim().isEmpty();
+        final String name = logged ? sessionPlayer.trim() : (playerName == null ? "" : playerName.trim());
+        if (name.isEmpty()) return err("请输入你的游戏 ID");
+        ShopEntry found = null;
+        for (ShopEntry s : plugin.shopData().shops()) {
+            if (shopId.trim().equals(s.shop_id)) {
+                found = s;
+                break;
+            }
+        }
+        if (found == null) return err("商店不存在或数据未同步");
+        final ShopEntry entry = found;
+        try {
+            return plugin.bridge().runOnMain(() -> {
+                JsonObject o = new JsonObject();
+                Player p = Bukkit.getPlayerExact(name);
+                if (p == null || !p.isOnline()) {
+                    o.addProperty("success", true);
+                    o.addProperty("online", false);
+                    o.addProperty("count", 0);
+                    o.addProperty("can_sell", 0);
+                    o.addProperty("message", "玩家不在线（收购需要玩家在游戏内）");
+                    return o;
+                }
+                long id = parseLong(entry.shop_id);
+                Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
+                Inventory chestInv = shop == null ? null : resolveInventory(shop);
+                ItemStack sample = findSample(chestInv);
+                if (sample == null) sample = fallbackItem(entry);
+                int count = sample == null ? 0 : countItems(p.getInventory(), sample);
+                int stack = Math.max(1, entry.stacking_amount);
+                o.addProperty("success", true);
+                o.addProperty("online", true);
+                o.addProperty("count", count);
+                o.addProperty("can_sell", count / stack);
+                return o;
+            });
+        } catch (Throwable t) {
+            return err("查询失败: " + t.getMessage());
+        }
+    }
+
+    private JsonObject doPurchase(ShopEntry e, String name, int amount, boolean logged) {
         Player buyer = Bukkit.getPlayerExact(name);
-        if (buyer == null || !buyer.isOnline()) {
-            return err("玩家 " + name + " 不在线（在线购买需要玩家在游戏内）");
+        boolean online = buyer != null && buyer.isOnline();
+        if (!online) {
+            if (!logged) {
+                return err("玩家 " + name + " 不在线（未登录玩家需要在线才能购买；用游戏账号登录后可离线购买）");
+            }
+            if (!plugin.config().allowOfflineBuy) {
+                return err("离线购买已被服务器关闭（config.yml purchase.allow-offline-buy）");
+            }
         }
         EconomyBridge eco = plugin.economy();
         if (!eco.available()) return err("服务器未安装经济插件（需要 Vault 支持）");
@@ -130,14 +204,20 @@ public final class PurchaseService {
             }
         }
 
+        // 付款人（在线用 Player；离线用缓冲的离线账户）
+        OfflinePlayer payer = online ? buyer : resolvePlayer(name);
+        if (payer == null) {
+            return err("找不到玩家 " + name + " 的账户（需至少登录过一次服务器）");
+        }
+
         // 余额检查
-        double balance = eco.balance(buyer);
+        double balance = eco.balance(payer);
         if (balance < total) {
             return err("余额不足：需要 " + total + "，当前 " + round2(balance));
         }
 
         // 扣款
-        if (!eco.withdraw(buyer, total)) {
+        if (!eco.withdraw(payer, total)) {
             return err("扣款失败（请检查经济插件）");
         }
 
@@ -145,7 +225,14 @@ public final class PurchaseService {
             if (!e.system_shop && chestInv != null) {
                 removeItems(chestInv, sample, needItems);
             }
-            deliverItems(buyer, sample, needItems);
+            if (online) {
+                deliverItems(buyer, sample, needItems);
+            } else {
+                // 离线购买：物品暂存，玩家上线自动发放
+                String b64 = ItemCodec.encode(sample);
+                if (b64 == null) throw new IllegalStateException("物品序列化失败");
+                plugin.store().addPending(name, b64, needItems);
+            }
             if (!e.system_shop && e.owner_uuid != null) {
                 try {
                     OfflinePlayer seller = Bukkit.getOfflinePlayer(UUID.fromString(e.owner_uuid));
@@ -154,8 +241,10 @@ public final class PurchaseService {
                 }
             }
 
-            buyer.sendMessage("§a[在线购买] §f成功购买 §e" + amount + "§f 份 §b" + e.shop_cn_name
-                    + " §f花费 §e" + total);
+            if (online) {
+                buyer.sendMessage("§a[在线购买] §f成功购买 §e" + amount + "§f 份 §b" + e.shop_cn_name
+                        + " §f花费 §e" + total);
+            }
             plugin.shopData().invalidate();
             plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "purchase",
                     name + " 网页购买 " + e.shop_cn_name + " x" + amount + " 花费 " + total);
@@ -166,15 +255,32 @@ public final class PurchaseService {
             o.addProperty("amount", amount);
             o.addProperty("unit_price", unit);
             o.addProperty("total_price", total);
-            o.addProperty("balance_left", round2(eco.balance(buyer)));
-            o.addProperty("message", "购买成功，物品已放入背包");
+            o.addProperty("balance_left", round2(eco.balance(payer)));
+            o.addProperty("message", online ? "购买成功，物品已放入背包" : "购买成功！物品将在你上线时自动发放");
             return o;
         } catch (Throwable t) {
             try {
-                eco.deposit(buyer, total); // 回滚退款
+                eco.deposit(payer, total); // 回滚退款
             } catch (Throwable ignored) {
             }
             return err("交易过程中出错，已自动退款（" + t.getMessage() + "）");
+        }
+    }
+
+    /** 名字 → 玩家对象（在线优先；离线用 Paper 缓存接口，不阻塞主线程） */
+    public static OfflinePlayer resolvePlayer(String name) {
+        try {
+            Player online = Bukkit.getPlayerExact(name);
+            if (online != null) return online;
+            try {
+                java.lang.reflect.Method m = Bukkit.getServer().getClass().getMethod("getOfflinePlayerIfCached", String.class);
+                Object r = m.invoke(Bukkit.getServer(), name);
+                if (r instanceof OfflinePlayer) return (OfflinePlayer) r;
+            } catch (Throwable ignored) {
+            }
+            return null;
+        } catch (Throwable t) {
+            return null;
         }
     }
 

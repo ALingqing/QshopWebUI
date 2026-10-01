@@ -1,0 +1,35 @@
+/* ===== 多设备适配（平板 / 手机） ===== */
+@media (max-width: 1024px) {
+  .shop-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .items-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .topnav-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+}
+@media (max-width: 768px) {
+  .topnav-inner { flex-wrap: wrap; row-gap: 6px; padding: 8px 12px; }
+  .topnav-left { flex-wrap: wrap; gap: 8px; max-width: 100%; }
+  .topnav-tabs { max-width: 100%; padding-bottom: 2px; }
+  .topnav-tab { padding: 6px 10px; font-size: 12px; flex: 0 0 auto; }
+  .topnav-right { flex-wrap: wrap; gap: 6px; }
+  .main-content { padding: 12px; }
+  .shop-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important; }
+  .shop-card { padding: 12px; }
+  .modal-panel { width: calc(100vw - 32px) !important; max-width: 460px !important; }
+  .purchase-dialog { min-width: 0 !important; width: 100%; }
+  .modal-footer { gap: 8px; flex-wrap: wrap; }
+  .toolbar { flex-wrap: wrap !important; }
+  .toolbar input, .toolbar select { flex: 1 1 100% !important; min-width: 0 !important; }
+  .stats-row { flex-wrap: wrap; }
+  .home-hero-title { font-size: 20px; }
+  .home-hero-subtitle { font-size: 13px; }
+}
+@media (max-width: 480px) {
+  .shop-grid { grid-template-columns: 1fr !important; }
+  .items-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .topnav-tab { font-size: 11px; padding: 5px 8px; }
+  .main-content { padding: 8px; }
+  .shop-name { font-size: 14px; }
+  .purchase-qty { width: 90px !important; }
+  .modal-panel { width: calc(100vw - 16px) !important; }
+}
+.auth-info { display: inline-flex; align-items: center; gap: 6px; }
+.auth-info.player { background: #ecfdf5; border: 2px solid #059669; border-radius: 4px; padding: 4px 8px; }

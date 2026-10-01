@@ -82,6 +82,75 @@ public final class AuthApi extends ApiBase {
     }
 
     // ============================================================
+    // POST /api/auth/player-login  玩家登录（AuthMe 密码验证）
+    // ============================================================
+
+    public HttpResponse playerLogin(HttpRequest req) {
+        JsonObject b = body(req);
+        String username = jstr(b, "username", "").trim();
+        String password = jstr(b, "password", "");
+        if (username.isEmpty() || password.isEmpty()) {
+            return HttpResponse.error(400, "请输入游戏 ID 和密码");
+        }
+        if (!username.matches("[A-Za-z0-9_]{1,16}")) {
+            return HttpResponse.error(400, "游戏 ID 格式不正确");
+        }
+        if (!plugin.authme().available()) {
+            return HttpResponse.error(503, "服务器未安装/未启用 AuthMe，无法使用游戏账号登录");
+        }
+        if (!plugin.authme().checkPassword(username, password)) {
+            return HttpResponse.error(401, "游戏 ID 或密码错误");
+        }
+        SessionManager.Session s = plugin.sessions().create(username, "player");
+        JsonObject o = obj();
+        put(o, "success", true);
+        put(o, "session_id", s.sessionId);
+        put(o, "player", username);
+        put(o, "role", "player");
+        put(o, "expires_in", plugin.config().sessionTimeout);
+        put(o, "balance", balanceOf(username));
+        put(o, "currency", plugin.economy().currencyName());
+        put(o, "pending_items", plugin.store().pendingCount(username));
+        return HttpResponse.json(o);
+    }
+
+    // ============================================================
+    // /api/wallet  余额查询（GET ?player=xxx 或 POST {player}）
+    // ============================================================
+
+    public HttpResponse wallet(HttpRequest req) {
+        String player = null;
+        if ("POST".equalsIgnoreCase(req.method)) {
+            JsonObject b = body(req);
+            player = jstr(b, "player", "");
+        }
+        if (player == null || player.trim().isEmpty()) player = req.param("player", "");
+        String sessionPlayer = plugin.sessions().playerOf(req);
+        final String target = (sessionPlayer != null && !sessionPlayer.isEmpty()) ? sessionPlayer : player.trim();
+        if (target.isEmpty()) return HttpResponse.error(400, "请提供玩家名");
+        JsonObject o = obj();
+        put(o, "success", true);
+        put(o, "player", target);
+        put(o, "economy", plugin.economy().available());
+        put(o, "currency", plugin.economy().currencyName());
+        put(o, "balance", balanceOf(target));
+        put(o, "online", org.bukkit.Bukkit.getPlayerExact(target) != null);
+        put(o, "pending_items", plugin.store().pendingCount(target));
+        return HttpResponse.json(o);
+    }
+
+    private Double balanceOf(String player) {
+        try {
+            if (!plugin.economy().available()) return null;
+            org.bukkit.OfflinePlayer op = com.qshop.webui.purchase.PurchaseService.resolvePlayer(player);
+            if (op == null) return null;
+            return plugin.economy().balance(op);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    // ============================================================
     // GET /api/auth/status
     // ============================================================
 

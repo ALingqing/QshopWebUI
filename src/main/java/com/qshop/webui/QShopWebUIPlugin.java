@@ -1,12 +1,14 @@
 package com.qshop.webui;
 
 import com.qshop.webui.auth.SessionManager;
+import com.qshop.webui.bridge.AuthMeBridge;
 import com.qshop.webui.bridge.EconomyBridge;
 import com.qshop.webui.bridge.QuickShopBridge;
 import com.qshop.webui.data.RequestStats;
 import com.qshop.webui.data.ShopDataService;
 import com.qshop.webui.data.WebStore;
 import com.qshop.webui.http.WebServer;
+import com.qshop.webui.listener.PurchaseJoinListener;
 import com.qshop.webui.purchase.PurchaseService;
 import com.qshop.webui.util.Materials;
 import org.bukkit.command.Command;
@@ -36,6 +38,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private WebServer webServer;
     private EconomyBridge economy;
     private PurchaseService purchases;
+    private AuthMeBridge authme;
 
     // ============================================================
     // 生命周期
@@ -62,6 +65,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         economy = new EconomyBridge(this);
         economy.reload();
         purchases = new PurchaseService(this);
+
+        authme = new AuthMeBridge(this);
+        authme.reload();
+        getServer().getPluginManager().registerEvents(new PurchaseJoinListener(this), this);
 
         shopData = new ShopDataService(this, bridge);
         sessions = new SessionManager(this);
@@ -211,6 +218,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         config.resolve(resolveServerPort());
         bridge.reload();
         economy.reload();
+        if (authme != null) authme.reload();
         stopWeb();
         startWeb();
     }
@@ -275,6 +283,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public PurchaseService purchases() {
         return purchases;
+    }
+
+    public AuthMeBridge authme() {
+        return authme;
     }
 
     /** 网页修改密码后刷新内存中的配置 */

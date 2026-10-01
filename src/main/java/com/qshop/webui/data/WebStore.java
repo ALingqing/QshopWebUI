@@ -49,6 +49,8 @@ public final class WebStore {
     private volatile JsonObject harbor = defaultHarbor();
     // ---- 注册用户（小写用户名 → {"username","password_hash","role","email","created_at","last_login","active"}） ----
     private final ConcurrentHashMap<String, JsonObject> users = new ConcurrentHashMap<>();
+    /** 网页离线购买的待领取物品：玩家名(小写) → [{i:base64物品, n:数量, t:时间}] */
+    private final ConcurrentHashMap<String, List<JsonObject>> pending = new ConcurrentHashMap<>();
 
     public WebStore(QShopWebUIPlugin plugin, File dataFolder) {
         this.plugin = plugin;
@@ -69,6 +71,7 @@ public final class WebStore {
         loadFetchLogs();
         loadHarbor();
         loadUsers();
+        loadPending();
     }
 
     private JsonElement readJson(String name) {
@@ -511,6 +514,74 @@ public final class WebStore {
     }
 
     // ============================================================
+    // pending（网页离线购买暂存物品）
+    // ============================================================
+
+    private void loadPending() {
+        try {
+            JsonElement el = readJson("pending.json");
+            if (el == null || !el.isJsonObject()) return;
+            for (Map.Entry<String, JsonElement> e : el.getAsJsonObject().entrySet()) {
+                if (!e.getValue().isJsonArray()) continue;
+                List<JsonObject> list = new ArrayList<>();
+                for (JsonElement item : e.getValue().getAsJsonArray()) {
+                    if (item.isJsonObject()) list.add(item.getAsJsonObject());
+                }
+                if (!list.isEmpty()) pending.put(e.getKey(), list);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Store] 读取 pending.json 失败: " + e.getMessage());
+        }
+    }
+
+    /** 添加待领取物品（玩家上线时发放） */
+    public synchronized void addPending(String playerName, String base64Item, long count) {
+        if (playerName == null || base64Item == null || count <= 0) return;
+        String key = playerName.toLowerCase(java.util.Locale.ROOT);
+        List<JsonObject> list = pending.computeIfAbsent(key, k -> new ArrayList<>());
+        JsonObject o = new JsonObject();
+        o.addProperty("i", base64Item);
+        o.addProperty("n", count);
+        o.addProperty("t", System.currentTimeMillis());
+        list.add(o);
+        savePending();
+    }
+
+    /** 取出并清空某玩家的待领取物品；无则返回 null */
+    public synchronized List<JsonObject> takePending(String playerName) {
+        if (playerName == null) return null;
+        List<JsonObject> list = pending.remove(playerName.toLowerCase(java.util.Locale.ROOT));
+        if (list == null || list.isEmpty()) return null;
+        savePending();
+        return new ArrayList<>(list);
+    }
+
+    /** 待领取物品总数量（件） */
+    public int pendingCount(String playerName) {
+        if (playerName == null) return 0;
+        List<JsonObject> list = pending.get(playerName.toLowerCase(java.util.Locale.ROOT));
+        if (list == null) return 0;
+        int n = 0;
+        for (JsonObject o : list) {
+            try {
+                n += o.has("n") ? o.get("n").getAsInt() : 0;
+            } catch (Throwable ignored) {
+            }
+        }
+        return n;
+    }
+
+    public void savePending() {
+        JsonObject o = new JsonObject();
+        for (Map.Entry<String, List<JsonObject>> e : pending.entrySet()) {
+            JsonArray arr = new JsonArray();
+            for (JsonObject item : e.getValue()) arr.add(item);
+            o.add(e.getKey(), arr);
+        }
+        writeJson("pending.json", o);
+    }
+
+    // ============================================================
     // 备份导出 / 恢复
     // ============================================================
 
@@ -538,6 +609,13 @@ public final class WebStore {
         for (Map.Entry<String, JsonObject> e : users.entrySet()) usersJson.add(e.getKey(), e.getValue().deepCopy());
         o.add("users", usersJson);
         o.add("fetch_logs", fetchLogs(500));
+        JsonObject pendingJson = new JsonObject();
+        for (Map.Entry<String, List<JsonObject>> e : pending.entrySet()) {
+            JsonArray arr = new JsonArray();
+            for (JsonObject it : e.getValue()) arr.add(it.deepCopy());
+            pendingJson.add(e.getKey(), arr);
+        }
+        o.add("pending", pendingJson);
         return o;
     }
 
