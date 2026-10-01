@@ -59,5 +59,15 @@ purchase:
   # 单次最多购买份数（1 份 = 商店的 stacking_amount 个物品）
   max-amount: 64
 
+# 页面可见性：隐藏不需要的前台页面（true = 隐藏）
+# 网页后台「数据管理」页可随时切换（后台设置优先于这里）；管理员登录后仍可见
+pages:
+  hide-home: false      # 首页（公告）
+  hide-buy: false       # 购买界面
+  hide-sell: false      # 收购界面
+  hide-browse: false    # 物品浏览
+  hide-shops: false     # 商店浏览
+  hide-stats: false     # 信息统计
+
 # 是否在控制台打印 QuickShop 数据源状态
 debug: false

@@ -34,7 +34,11 @@ const check = (rel, needle, label) => {
 };
 
 check('web/js/app.js', 'showPurchaseModal', 'app.js 购买弹窗');
+check('web/js/app.js', 'showSellModal', 'app.js 出售弹窗');
+check('web/js/app.js', 'initSellPage', 'app.js 收购界面');
+check('web/index.html', 'data-tab="sell"', 'index.html 收购导航');
 check('web/js/db.js', 'purchaseShop', 'db.js purchaseShop API');
+check('web/js/db.js', 'sellShop', 'db.js sellShop API');
 check('web/css/style.css', 'Online purchase (web buy)', 'style.css 购买样式');
 check('config.yml', 'purchase:', 'config.yml purchase 段');
 check('plugin.yml', 'QShopWebUI', 'plugin.yml');

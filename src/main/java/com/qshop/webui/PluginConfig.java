@@ -36,6 +36,9 @@ public final class PluginConfig {
     // === 网站显示 ===
     public String serverName = "";
 
+    // === 页面可见性（config.yml pages.hide-*，网页后台可覆盖） ===
+    public final java.util.Set<String> hiddenPages = new java.util.HashSet<>();
+
     // === 运行时解析结果 ===
     public boolean multiplex = false;
     public int mcPortResolved = 0;
@@ -64,6 +67,9 @@ public final class PluginConfig {
         cfg.purchaseEnabled = c.getBoolean("purchase.enabled", true);
         cfg.purchaseMaxAmount = Math.max(1, c.getInt("purchase.max-amount", 64));
         cfg.serverName = c.getString("server-name", "").trim();
+        for (String k : new String[]{"home", "buy", "sell", "browse", "shops", "stats"}) {
+            if (c.getBoolean("pages.hide-" + k, false)) cfg.hiddenPages.add(k);
+        }
         return cfg;
     }
 

@@ -51,6 +51,50 @@ public final class MetaApi extends ApiBase {
     }
 
     // ============================================================
+    // /api/pages  页面可见性（config.yml pages.hide-* 为默认；网页后台设置优先）
+    // ============================================================
+
+    public HttpResponse pagesGet(HttpRequest req) {
+        JsonObject o = obj();
+        put(o, "success", true);
+        o.add("hidden_pages", hiddenPages());
+        return HttpResponse.json(o);
+    }
+
+    public HttpResponse pagesSet(HttpRequest req) {
+        HttpResponse deny = adminOnly(req);
+        if (deny != null) return deny;
+        JsonObject b = body(req);
+        JsonArray arr = new JsonArray();
+        if (b.has("hidden") && b.get("hidden").isJsonArray()) {
+            for (JsonElement e : b.getAsJsonArray("hidden")) {
+                if (e == null || e.isJsonNull()) continue;
+                String s = e.getAsString().toLowerCase(java.util.Locale.ROOT).trim();
+                if (!s.isEmpty()) arr.add(s);
+            }
+        }
+        plugin.store().setSetting("hidden_pages", arr, "array");
+        JsonObject o = obj();
+        put(o, "success", true);
+        put(o, "action", "updated");
+        o.add("hidden_pages", arr);
+        return HttpResponse.json(o);
+    }
+
+    /** 合并：网页后台设置（优先）→ config.yml 默认 */
+    private JsonArray hiddenPages() {
+        JsonObject s = plugin.store().getSetting("hidden_pages");
+        if (s != null && s.has("value") && s.get("value").isJsonArray()) {
+            JsonArray copy = new JsonArray();
+            for (JsonElement e : s.getAsJsonArray("value")) copy.add(e);
+            return copy;
+        }
+        JsonArray arr = new JsonArray();
+        for (String p : plugin.config().hiddenPages) arr.add(p);
+        return arr;
+    }
+
+    // ============================================================
     // /api/settings
     // ============================================================
 

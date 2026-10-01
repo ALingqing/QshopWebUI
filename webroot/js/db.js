@@ -1012,6 +1012,37 @@
       } catch (e) {
         return { success: false, error: e.message };
       }
+    },
+
+    // 网页「在线出售」（卖给收购商店）：玩家必须在游戏内在线
+    sellShop: async function (shopId, player, amount) {
+      try {
+        const data = await apiCall('/sell', {
+          method: 'POST',
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1 }
+        });
+        return data || { success: false, error: '服务器无响应' };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    },
+
+    // 页面可见性（后台控制哪些页面对普通访客隐藏）
+    getPages: async function () {
+      try {
+        const data = await apiCall('/pages', { method: 'GET' });
+        return data || { success: false, hidden_pages: [] };
+      } catch (e) {
+        return { success: false, hidden_pages: [], error: e.message };
+      }
+    },
+    setPages: async function (hidden) {
+      try {
+        const data = await apiCall('/pages', { method: 'POST', body: { hidden: hidden || [] } });
+        return data || { success: false };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
   };
 

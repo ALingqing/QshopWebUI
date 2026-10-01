@@ -174,6 +174,12 @@ public final class ApiRouter {
             case "/api/purchase":
                 return purchaseApi.purchase(req);
 
+            case "/api/sell":
+                return purchaseApi.sell(req);
+
+            case "/api/pages":
+                return "GET".equalsIgnoreCase(m) ? metaApi.pagesGet(req) : metaApi.pagesSet(req);
+
             case "/api/harbor":
                 if ("GET".equals(m)) return shopApi.harborGet(req);
                 if ("PUT".equals(m)) return shopApi.harborPut(req);

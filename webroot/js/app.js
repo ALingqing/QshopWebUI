@@ -526,9 +526,35 @@
     } catch (e) { }
   }
 
+  //  页面可见性：config.yml pages.hide-* 为默认，网页后台「数据管理」可覆盖
+  let hiddenPages = [];
+  const PAGE_LABELS = { home: '首页', buy: '购买界面', sell: '收购界面', browse: '物品浏览', shops: '商店浏览', stats: '信息统计' };
+  function applyPageVisibility() {
+    try {
+      let firstVisible = null;
+      $$('#topnav-tabs .topnav-tab').forEach(function (btn) {
+        const tab = btn.dataset.tab;
+        if (!PAGE_LABELS[tab]) return;
+        if (!state.isAdmin && hiddenPages.indexOf(tab) >= 0) {
+          btn.style.display = 'none';
+        } else {
+          btn.style.display = '';
+          if (!firstVisible) firstVisible = tab;
+        }
+      });
+      // 当前停留页面被隐藏 → 跳到第一个可见页面
+      const cur = state.currentTab === 'items' ? 'browse' : state.currentTab;
+      if (!state.isAdmin && PAGE_LABELS[cur] && hiddenPages.indexOf(cur) >= 0 && firstVisible) {
+        switchTab(firstVisible);
+      }
+    } catch (e) { }
+  }
+
   //  顶部导航栏渲染
   const TopNav = {
     render() {
+      // 页面可见性（隐藏配置）
+      try { applyPageVisibility(); } catch (e) { }
       // Tab 高亮
       $$('#topnav-tabs .topnav-tab').forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.tab === state.currentTab);
@@ -813,6 +839,8 @@
         case 'items': initItemBrowse(); break;
         case 'itemDetail': initItemDetail(opts && opts.material); break;
         case 'shops': initShops(); break;
+        case 'buy': initBuyPage(); break;
+        case 'sell': initSellPage(); break;
         case 'stats': initStatsPage(); break;
         case 'monitor': initMonitorPage(); break;
         case 'backup': initBackupPage(); break;
@@ -1834,6 +1862,17 @@
       ]));
     }
 
+    // —— 在线卖出按钮（仅收购商店）——
+    if (isBuying) {
+      card.appendChild(el('div', { class: 'shop-buy-bar' }, [
+        el('button', {
+          class: 'neo-btn primary purchase-btn',
+          text: '💰 卖给 TA',
+          onclick: function () { showSellModal(shop); }
+        })
+      ]));
+    }
+
     card.appendChild(info);
     return card;
   }
@@ -2013,6 +2052,7 @@
             try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
             Toast.show('✓ 购买成功：' + r.item + ' ×' + r.amount + ' 份，花费 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
             QSDB.clearCache();
+            refreshTradePage();
             try { modalRef.close(); } catch (e) { }
             // 稍后刷新当前物品详情页（库存已变化）
             setTimeout(function () {
@@ -2037,6 +2077,191 @@
         }).catch(function (e) {
           Toast.show('购买失败：' + (e && e.message ? e.message : e), 'error');
           try { modalRef.setDone('确认购买'); } catch (e2) { }
+        });
+        return false; // 异步处理，保持弹窗开启
+      }
+    });
+  }
+
+  // 交易成功后：若当前停留在 购买/收购 页则静默刷新
+  function refreshTradePage() {
+    try {
+      const content = $('#content-area');
+      if (!content) return;
+      const panels = content.querySelectorAll('.tab-panel');
+      for (let i = 0; i < panels.length; i++) {
+        const p = panels[i];
+        if (p.style.display === 'none') continue;
+        const t = p.dataset.tab;
+        if (t === 'buy' || t === 'sell') {
+          p.innerHTML = '';
+          renderIntoPanel(p, function () { return t === 'buy' ? initBuyPage() : initSellPage(); });
+        }
+        break;
+      }
+    } catch (e) { }
+  }
+
+  // 交易页公共骨架（购买/收购共用）：搜索 + 排序 + 分页 + 商店卡片网格
+  async function initTradePage(pageKey, shopType, title, subtitle, emptyText) {
+    const root = ensureTabPanel(pageKey);
+    if (!root) return;
+    root.innerHTML = '';
+    root.appendChild(el('div', { class: 'page-header' }, [
+      el('h2', { class: 'page-title', text: title }),
+      el('div', { class: 'page-subtitle', text: subtitle })
+    ]));
+
+    const toolbar = el('div', { class: 'toolbar', style: { marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' } });
+    const searchInput = el('input', { type: 'text', placeholder: '搜索物品 / 店主...', class: 'filter-input', style: { flex: '2', minWidth: '220px', padding: '10px 14px', border: '3px solid #000', borderRadius: '4px' } });
+    const sortSelect = el('select', { class: 'filter-select' });
+    [['price_asc', '价格低→高'], ['price_desc', '价格高→低'], ['newest', '最新']].forEach(function (o) {
+      sortSelect.appendChild(el('option', { value: o[0], text: o[1] }));
+    });
+    const refreshBtn = el('button', { class: 'neo-btn', text: '刷新' });
+    toolbar.appendChild(searchInput);
+    toolbar.appendChild(sortSelect);
+    toolbar.appendChild(refreshBtn);
+    root.appendChild(toolbar);
+
+    const info = el('div', { style: { margin: '6px 0 12px', color: '#6b7280', fontSize: '13px' } });
+    root.appendChild(info);
+    const grid = el('div', { class: 'shop-grid' });
+    root.appendChild(grid);
+    const pager = el('div', { style: { display: 'flex', gap: '8px', justifyContent: 'center', margin: '16px 0' } });
+    root.appendChild(pager);
+
+    const PAGE = 24;
+    let page = 1;
+
+    async function load() {
+      grid.innerHTML = '';
+      grid.appendChild(el('div', { style: { padding: '20px', color: '#6b7280', gridColumn: '1/-1' }, text: '加载中...' }));
+      const r = await QSDB.search(searchInput.value.trim(), { shop_type: shopType, sort: sortSelect.value, page: page, pageSize: PAGE });
+      grid.innerHTML = '';
+      pager.innerHTML = '';
+      if (!r.success) {
+        grid.appendChild(el('div', { style: { padding: '20px', color: '#991b1b', gridColumn: '1/-1' }, text: '加载失败: ' + (r.error || '未知错误') }));
+        info.textContent = '';
+        return;
+      }
+      if (!r.results.length) {
+        grid.appendChild(el('div', { style: { padding: '20px', color: '#6b7280', gridColumn: '1/-1' }, text: emptyText }));
+        info.textContent = '';
+        return;
+      }
+      r.results.forEach(function (s) { grid.appendChild(renderShopDetailCard(s)); });
+      info.textContent = '共 ' + r.total + ' 个商店 · 第 ' + r.page + ' / ' + r.total_pages + ' 页';
+      if (r.total_pages > 1) {
+        const prev = el('button', { class: 'neo-btn', text: '上一页' });
+        const next = el('button', { class: 'neo-btn', text: '下一页' });
+        prev.disabled = r.page <= 1;
+        next.disabled = r.page >= r.total_pages;
+        prev.onclick = function () { if (page > 1) { page--; load(); } };
+        next.onclick = function () { if (page < r.total_pages) { page++; load(); } };
+        pager.appendChild(prev);
+        pager.appendChild(next);
+      }
+    }
+    refreshBtn.onclick = function () { QSDB.clearCache(); load(); };
+    let timer = null;
+    searchInput.oninput = function () { clearTimeout(timer); timer = setTimeout(function () { page = 1; load(); }, 350); };
+    sortSelect.onchange = function () { page = 1; load(); };
+    load();
+  }
+
+  //  购买界面（玩家视角：浏览出售商店并购买）
+  function initBuyPage() {
+    return initTradePage('buy', 'SELLING', '🛒 购买界面', '服务器上所有出售商店 · 直接在线购买（玩家需在游戏中）', '没有找到出售中的商店');
+  }
+
+  //  收购界面（玩家视角：把物品卖给收购商店）
+  function initSellPage() {
+    return initTradePage('sell', 'BUYING', '💰 收购界面', '服务器上所有收购商店 · 把背包里的物品卖给他们（玩家需在游戏中）', '没有找到收购中的商店');
+  }
+
+  //  在线出售弹窗（卖给收购商店，报酬到账，物品从背包扣除）
+  function showSellModal(shop) {
+    const unitPrice = Number(shop.price || 0);
+    const unitDisplay = (shop.price_display !== undefined && shop.price_display !== null)
+      ? String(shop.price_display)
+      : unitPrice.toFixed(2);
+    const stackAmount = Math.max(1, parseInt(shop.stacking_amount, 10) || 1);
+    const itemName = shop.shop_cn_name || shop.item_name || shop.material || '物品';
+    const ownerName = shopOwnerName(shop);
+
+    let savedName = '';
+    try { savedName = localStorage.getItem('qsw_player_name') || ''; } catch (e) { }
+
+    const nameInput = el('input', {
+      type: 'text', class: 'purchase-input', placeholder: '请输入你的游戏 ID（必须在线）',
+      value: savedName, maxlength: '16', style: { width: '100%' }
+    });
+    const qtyInput = el('input', {
+      type: 'number', class: 'purchase-input purchase-qty', value: '1',
+      min: '1', max: '64', style: { width: '110px' }
+    });
+    const summary = el('div', { class: 'purchase-summary' });
+
+    function currentQty() {
+      return Math.max(1, Math.min(64, parseInt(qtyInput.value, 10) || 1));
+    }
+    function refreshSummary() {
+      const q = currentQty();
+      const total = Math.round(unitPrice * q * 100) / 100;
+      summary.textContent = '收购单价 $' + unitDisplay + ' × ' + q + ' 份 = 你将获得 $' + total.toFixed(2);
+    }
+    qtyInput.addEventListener('input', refreshSummary);
+    refreshSummary();
+
+    const bodyNode = el('div', { class: 'purchase-dialog' }, [
+      el('div', { class: 'purchase-item' }, [
+        shop.item_image ? el('img', {
+          class: 'purchase-img', src: shop.item_image, alt: '',
+          onerror: function () { this.style.display = 'none'; }
+        }) : null,
+        el('div', { style: { minWidth: '0', flex: '1' } }, [
+          el('div', { class: 'purchase-name', text: itemName }),
+          el('div', { class: 'purchase-sub', text: (ownerName ? '店主: ' + ownerName + ' · ' : '') + '世界: ' + (shop.world || '-') + ' · (' + shop.x + ', ' + shop.y + ', ' + shop.z + ')' })
+        ])
+      ]),
+      el('div', { class: 'purchase-field' }, [
+        el('label', { class: 'purchase-label', text: '游戏 ID（必须正在游戏中）' }),
+        nameInput
+      ]),
+      el('div', { class: 'purchase-field' }, [
+        el('label', { class: 'purchase-label', text: '出售份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
+        qtyInput
+      ]),
+      summary,
+      el('div', { class: 'purchase-tip', text: '⚠ 物品将从你的背包扣除；报酬直接存入你的账户。' + (ownerName ? '' : '（系统商店：无限收购）') })
+    ]);
+
+    let modalRef = null;
+    modalRef = Modal.show({
+      title: '在线出售 · ' + itemName,
+      body: bodyNode,
+      confirmText: '确认出售',
+      onConfirm: function () {
+        const player = nameInput.value.trim();
+        if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
+        if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
+        const qty = currentQty();
+        try { modalRef.setProcessing('处理中...'); } catch (e) { }
+        QSDB.sellShop(shop.shop_id, player, qty).then(function (r) {
+          if (r && r.success) {
+            try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
+            Toast.show('✓ 出售成功：' + r.item + ' ×' + r.amount + ' 份，获得 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
+            QSDB.clearCache();
+            try { modalRef.close(); } catch (e) { }
+            refreshTradePage();
+          } else {
+            Toast.show('出售失败：' + ((r && r.error) || '未知错误'), 'error');
+            try { modalRef.setDone('确认出售'); } catch (e) { }
+          }
+        }).catch(function (e) {
+          Toast.show('出售失败：' + (e && e.message ? e.message : e), 'error');
+          try { modalRef.setDone('确认出售'); } catch (e2) { }
         });
         return false; // 异步处理，保持弹窗开启
       }
@@ -2123,6 +2348,37 @@
 
     // 欢迎标题
     root.appendChild(el('h2', { style: { fontSize: '20px', marginBottom: '16px' }, text: '📊 数据管理' }));
+
+    // --- 卡片 0: 页面可见性 ---
+    const visCard = el('div', { class: 'admin-card' }, [
+      el('h3', { text: '👁 页面可见性' }),
+      el('p', { class: 'hint', text: '勾选后该页面将对普通访客隐藏（管理员登录后仍可见）；保存后对所有人立即生效。' })
+    ]);
+    const visList = el('div', { style: { display: 'flex', gap: '16px', flexWrap: 'wrap', margin: '10px 0' } });
+    const visBoxes = {};
+    Object.keys(PAGE_LABELS).forEach(function (tab) {
+      const cb = el('input', { type: 'checkbox', style: { marginRight: '6px' } });
+      cb.checked = hiddenPages.indexOf(tab) >= 0;
+      visBoxes[tab] = cb;
+      visList.appendChild(el('label', { style: { display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: '600', cursor: 'pointer' } }, [cb, PAGE_LABELS[tab]]));
+    });
+    visCard.appendChild(visList);
+    const visSave = el('button', { class: 'neo-btn primary', text: '保存可见性设置' });
+    visSave.onclick = async function () {
+      const hidden = Object.keys(visBoxes).filter(function (t) { return visBoxes[t].checked; });
+      visSave.disabled = true;
+      const r = await QSDB.setPages(hidden);
+      visSave.disabled = false;
+      if (r && r.success) {
+        hiddenPages = r.hidden_pages || hidden;
+        applyPageVisibility();
+        Toast.show(hidden.length ? ('已隐藏 ' + hidden.length + ' 个页面') : '全部页面已设为可见', 'success');
+      } else {
+        Toast.show('保存失败: ' + ((r && r.error) || '未知错误'), 'error');
+      }
+    };
+    visCard.appendChild(visSave);
+    root.appendChild(visCard);
 
     // --- 卡片 1: 生成测试数据 + 强制终止 ---
     const seedCard = el('div', { class: 'admin-card' }, [
@@ -2724,6 +2980,14 @@
       if (h && h.success && h.server_name) {
         siteServerName = String(h.server_name);
         applySiteBrand();
+      }
+    }).catch(function () { });
+
+    // 页面可见性（config.yml pages.hide-* / 后台设置）
+    QSDB.getPages().then(function (r) {
+      if (r && r.success && r.hidden_pages) {
+        hiddenPages = r.hidden_pages;
+        applyPageVisibility();
       }
     }).catch(function () { });
   });
