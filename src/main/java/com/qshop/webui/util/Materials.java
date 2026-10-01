@@ -17,6 +17,8 @@ public final class Materials {
     private static final Map<String, String> ZH = new HashMap<>();
     private static final Map<String, String> ENCH = new HashMap<>();
     private static final Map<String, String> POTION = new HashMap<>();
+    /** 服务器数据包/资源包的翻译键（如 item.dnt.cave_chamber_key → 洞穴密室钥匙） */
+    private static final Map<String, String> CUSTOM_LANG = new HashMap<>();
     private static boolean initialized = false;
 
     private Materials() {
@@ -27,7 +29,8 @@ public final class Materials {
         loadJson(plugin, "material_zh_cn.json", ZH);
         loadJson(plugin, "enchantment_zh_cn.json", ENCH);
         loadJson(plugin, "potion_zh_cn.json", POTION);
-        plugin.getLogger().info("材质中文表已加载: " + ZH.size() + " 条, 附魔名: " + ENCH.size() + " 条, 药水名: " + POTION.size() + " 条");
+        loadJson(plugin, "custom_lang_zh_cn.json", CUSTOM_LANG);
+        plugin.getLogger().info("材质中文表已加载: " + ZH.size() + " 条, 附魔名: " + ENCH.size() + " 条, 药水名: " + POTION.size() + " 条, 数据包翻译: " + CUSTOM_LANG.size() + " 条");
         initialized = true;
     }
 
@@ -44,6 +47,12 @@ public final class Materials {
         } catch (Exception e) {
             plugin.getLogger().warning(resource + " 加载失败: " + e);
         }
+    }
+
+    /** 数据包翻译键（如 item.dnt.cave_chamber_key / advancement.dnt.xxx）→ 中文名；无映射返回 null */
+    public static String translateKey(String key) {
+        if (key == null || key.isEmpty()) return null;
+        return CUSTOM_LANG.get(key.toLowerCase(Locale.ROOT));
     }
 
     /** material（DIAMOND_SWORD）→ 中文名；无映射时转可读形式（Diamond Sword） */
@@ -80,14 +89,16 @@ public final class Materials {
         return sb.toString();
     }
 
-    /** 附魔 id（sharpness / minecraft:sharpness）→ 中文名 */
+    /** 附魔 id（sharpness / minecraft:sharpness / dnt:aerials_bane）→ 中文名 */
     public static String enchantment(String id) {
         if (id == null || id.isEmpty()) return "未知附魔";
         String key = id.toLowerCase(Locale.ROOT);
         if (key.startsWith("minecraft:")) key = key.substring("minecraft:".length());
         String v = ENCH.get(key);
+        if (v == null && key.contains(":")) v = ENCH.get(key.substring(key.indexOf(':') + 1));
         if (v != null) return v;
-        return readable(key.toUpperCase(Locale.ROOT));
+        String bare = key.contains(":") ? key.substring(key.indexOf(':') + 1) : key;
+        return readable(bare.toUpperCase(Locale.ROOT));
     }
 
     /** 1-10 → 罗马数字；其他返回数字文本 */
@@ -97,16 +108,18 @@ public final class Materials {
         return String.valueOf(n);
     }
 
-    /** 药水名：container = potion/splash/lingering/tipped, effectId 如 healing / strong_healing */
+    /** 药水名：container = potion/splash/lingering/tipped, effectId 如 healing / strong_healing / dnt_levitation */
     public static String potionName(String container, String effectId) {
         if (effectId == null || effectId.isEmpty()) return "未知药水";
         String id = effectId.toLowerCase(Locale.ROOT);
         if (id.startsWith("minecraft:")) id = id.substring("minecraft:".length());
         String v = POTION.get(container + ":" + id);
+        if (v == null && id.contains(":")) v = POTION.get(container + ":" + id.substring(id.indexOf(':') + 1));
         if (v != null) return v;
         // 退回普通药水名
         String base = POTION.get("potion:" + id);
         if (base != null) return base;
-        return readable(id.toUpperCase(Locale.ROOT));
+        String bare = id.contains(":") ? id.substring(id.indexOf(':') + 1) : id;
+        return readable(bare.toUpperCase(Locale.ROOT));
     }
 }

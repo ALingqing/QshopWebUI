@@ -38,6 +38,7 @@ check('web/js/db.js', 'purchaseShop', 'db.js purchaseShop API');
 check('web/css/style.css', 'Online purchase (web buy)', 'style.css 购买样式');
 check('config.yml', 'purchase:', 'config.yml purchase 段');
 check('plugin.yml', 'QShopWebUI', 'plugin.yml');
+check('custom_lang_zh_cn.json', 'item.dnt.', '数据包翻译表');
 {
   const txt = fs.readFileSync(path.join(tmp, 'web/js/app.js'), 'utf8');
   console.log('app.js 店主过滤 shopOwnerName: ' + (txt.includes('shopOwnerName') ? '✓' : '!! 未找到'));

@@ -784,14 +784,51 @@ public final class QuickShopBridge {
             Object meta = call(item, "getItemMeta");
             if (meta == null) return null;
             String dn = asString(call(meta, "getDisplayName"));
+            // Paper 1.20.5+：物品名也可能在 item_name 组件（getDisplayName 读不到）
+            if (dn == null || dn.trim().isEmpty()) {
+                dn = readItemNameComponent(meta);
+            }
             if (dn == null) return null;
             dn = dn.replaceAll("§.", "").trim();
-            if (dn.isEmpty() || dn.contains("Component@") || dn.startsWith("Component{")) return null;
+            if (dn.isEmpty() || dn.contains("Component@") || dn.contains("Component{")) return null;
+            // 物品名是数据包翻译键（如 item.dnt.cave_chamber_key）→ 查内置数据包翻译表
+            if (!hasChinese(dn) && dn.indexOf('.') > 0) {
+                String translated = Materials.translateKey(dn);
+                if (translated != null) dn = translated.replaceAll("§.", "").trim();
+            }
+            if (dn.isEmpty() || dn.contains("Component")) return null;
             String readable = baseMaterial.replace('_', ' ');
             if (dn.equalsIgnoreCase(readable)) return null;
             if (dn.equalsIgnoreCase(Materials.cn(baseMaterial))) return null;
             if (dn.length() > 64) dn = dn.substring(0, 64);
             return dn;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 读取 Paper 1.20.5+ 的 item_name 组件（如数据包自定义物品名）。
+     * 翻译组件取 key 查表；文本组件取 text；均失败返回 null。
+     */
+    private static String readItemNameComponent(Object meta) {
+        try {
+            Object comp = call(meta, "itemName");
+            if (comp == null) return null;
+            try {
+                Object key = call(comp, "key");
+                if (key instanceof String) {
+                    String t = Materials.translateKey((String) key);
+                    return t != null ? t : null;
+                }
+            } catch (Throwable ignored) {
+            }
+            try {
+                Object txt = call(comp, "text");
+                if (txt instanceof String && !((String) txt).isEmpty()) return (String) txt;
+            } catch (Throwable ignored) {
+            }
+            return null;
         } catch (Throwable t) {
             return null;
         }
