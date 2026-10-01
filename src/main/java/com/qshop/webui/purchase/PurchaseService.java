@@ -401,18 +401,27 @@ public final class PurchaseService {
         ItemStack fromChest = findSample(chestInv);
         ItemStack fromShop = shopItemSample(shop);
         ItemStack sample = fromChest != null ? fromChest : fromShop;
-        if (sample == null) sample = fallbackItem(e);
+        boolean fallback = false;
+        if (sample == null) {
+            sample = fallbackItem(e);
+            fallback = true;
+        }
         if (sample == null) return null;
         // 玩家头：缺皮肤时用有皮肤的另一个来源
         if (isHead(sample) && !hasSkullOwner(sample)) {
             ItemStack alt = (sample == fromChest) ? fromShop : fromChest;
-            if (alt != null && isHead(alt) && hasSkullOwner(alt)) sample = alt;
+            if (alt != null && isHead(alt) && hasSkullOwner(alt)) {
+                sample = alt;
+                fallback = false;
+            }
         }
-        // 诊断：仍无皮肤时记录来源（容器:可/不可访问）
+        // 玩家头完全无皮肤数据：拒绝交易，避免发出错误的“史蒂夫头”
         if (isHead(sample) && !hasSkullOwner(sample)) {
-            String src = (sample == fromChest) ? "容器" : (sample == fromShop) ? "QuickShop数据" : "基础材质";
-            plugin.getLogger().warning("[样品] 商店 #" + e.shop_id + " 的玩家头缺少皮肤数据（来源: " + src
-                    + "，容器:" + (chestInv != null ? "可访问" : "不可访问") + "）");
+            if (fallback) {
+                plugin.getLogger().warning("[样品] 商店 #" + e.shop_id + " 玩家头皮肤数据完全不可用，已拒绝交易（容器不可访问且商店数据读取失败）");
+                return null;
+            }
+            plugin.getLogger().warning("[样品] 商店 #" + e.shop_id + " 的玩家头缺少皮肤数据（来源有物品但无皮肤）");
         }
         return sample;
     }

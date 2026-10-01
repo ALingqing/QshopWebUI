@@ -144,12 +144,35 @@ public final class QuickShopBridge {
     }
 
     public Object getShopById(long id) {
-        if (!available || mGetShopById == null) return null;
+        if (!available) return null;
+        // 1) 按方法名 + 参数类型精确调用（避免匹配到 getShop(UUID) 等其他重载）
         try {
-            return mGetShopById.invoke(shopManager, id);
-        } catch (Throwable t) {
-            return null;
+            for (Method m : methods(shopManager, "getShop", "getShopById")) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length != 1) continue;
+                try {
+                    Object r;
+                    if (pt[0] == long.class || pt[0] == Long.class) r = m.invoke(shopManager, id);
+                    else if (pt[0] == int.class || pt[0] == Integer.class) r = m.invoke(shopManager, (int) id);
+                    else continue;
+                    if (r != null) return r;
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
         }
+        // 2) 回退：遍历所有商店按 getShopId() 匹配（与数据快照的 shop_id 来源一致）
+        try {
+            for (Object shop : getAllShopsRaw()) {
+                try {
+                    Object sid = call(shop, "getShopId");
+                    if (sid instanceof Number && ((Number) sid).longValue() == id) return shop;
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     /** 把任意任务调度到主线程执行（操作 QuickShop 对象必须如此） */
