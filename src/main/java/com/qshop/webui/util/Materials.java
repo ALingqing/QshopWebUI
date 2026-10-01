@@ -15,6 +15,8 @@ import java.util.Map;
 public final class Materials {
 
     private static final Map<String, String> ZH = new HashMap<>();
+    private static final Map<String, String> ENCH = new HashMap<>();
+    private static final Map<String, String> POTION = new HashMap<>();
     private static boolean initialized = false;
 
     private Materials() {
@@ -22,20 +24,26 @@ public final class Materials {
 
     public static synchronized void init(Plugin plugin) {
         if (initialized) return;
-        try (InputStream is = plugin.getResource("material_zh_cn.json")) {
-            if (is != null) {
-                JsonObject o = JsonParser.parseReader(new InputStreamReader(is, StandardCharsets.UTF_8)).getAsJsonObject();
-                for (Map.Entry<String, com.google.gson.JsonElement> e : o.entrySet()) {
-                    ZH.put(e.getKey().toUpperCase(Locale.ROOT), e.getValue().getAsString());
-                }
-                plugin.getLogger().info("材质中文表已加载: " + ZH.size() + " 条");
-            } else {
-                plugin.getLogger().warning("material_zh_cn.json 未找到（将使用英文名）");
+        loadJson(plugin, "material_zh_cn.json", ZH);
+        loadJson(plugin, "enchantment_zh_cn.json", ENCH);
+        loadJson(plugin, "potion_zh_cn.json", POTION);
+        plugin.getLogger().info("材质中文表已加载: " + ZH.size() + " 条, 附魔名: " + ENCH.size() + " 条, 药水名: " + POTION.size() + " 条");
+        initialized = true;
+    }
+
+    private static void loadJson(Plugin plugin, String resource, Map<String, String> target) {
+        try (InputStream is = plugin.getResource(resource)) {
+            if (is == null) {
+                plugin.getLogger().warning(resource + " 未找到");
+                return;
+            }
+            JsonObject o = JsonParser.parseReader(new InputStreamReader(is, StandardCharsets.UTF_8)).getAsJsonObject();
+            for (Map.Entry<String, com.google.gson.JsonElement> e : o.entrySet()) {
+                target.put(e.getKey(), e.getValue().getAsString());
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("材质中文表加载失败: " + e);
+            plugin.getLogger().warning(resource + " 加载失败: " + e);
         }
-        initialized = true;
     }
 
     /** material（DIAMOND_SWORD）→ 中文名；无映射时转可读形式（Diamond Sword） */
@@ -70,5 +78,35 @@ public final class Materials {
             }
         }
         return sb.toString();
+    }
+
+    /** 附魔 id（sharpness / minecraft:sharpness）→ 中文名 */
+    public static String enchantment(String id) {
+        if (id == null || id.isEmpty()) return "未知附魔";
+        String key = id.toLowerCase(Locale.ROOT);
+        if (key.startsWith("minecraft:")) key = key.substring("minecraft:".length());
+        String v = ENCH.get(key);
+        if (v != null) return v;
+        return readable(key.toUpperCase(Locale.ROOT));
+    }
+
+    /** 1-10 → 罗马数字；其他返回数字文本 */
+    public static String roman(int n) {
+        String[] r = {"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
+        if (n >= 1 && n < r.length) return r[n];
+        return String.valueOf(n);
+    }
+
+    /** 药水名：container = potion/splash/lingering/tipped, effectId 如 healing / strong_healing */
+    public static String potionName(String container, String effectId) {
+        if (effectId == null || effectId.isEmpty()) return "未知药水";
+        String id = effectId.toLowerCase(Locale.ROOT);
+        if (id.startsWith("minecraft:")) id = id.substring("minecraft:".length());
+        String v = POTION.get(container + ":" + id);
+        if (v != null) return v;
+        // 退回普通药水名
+        String base = POTION.get("potion:" + id);
+        if (base != null) return base;
+        return readable(id.toUpperCase(Locale.ROOT));
     }
 }

@@ -49,5 +49,11 @@ web:
   # 数据快照缓存时间（毫秒）：短时间内的请求复用同一份 QuickShop 数据
   snapshot-ttl-ms: 5000
 
+# 网页「在线购买」（玩家必须在游戏内在线；需要 Vault/经济插件）
+purchase:
+  enabled: true
+  # 单次最多购买份数（1 份 = 商店的 stacking_amount 个物品）
+  max-amount: 64
+
 # 是否在控制台打印 QuickShop 数据源状态
 debug: false

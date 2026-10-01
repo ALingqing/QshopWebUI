@@ -408,33 +408,97 @@ public final class QuickShopBridge {
             String t = asString(type);
             if (t != null && !t.isEmpty()) material = t;
         }
-        e.material = material.toUpperCase(Locale.ROOT);
+        String baseMaterial = material.toUpperCase(Locale.ROOT);
 
-        // 名称
+        // 物品自定义显示名（命名物品 / 玩家头名字等）
+        String itemDisplayName = readItemDisplayName(item, baseMaterial);
+
+        // 附魔（附魔书 stored 附魔 / 普通装备附魔）
+        List<ShopEntry.Enchant> enchants = readEnchants(item);
+        String suffix = enchantSuffix(enchants);
+
+        // 药水类（药水 / 喷溅 / 滞留 / 药箭）：[container, effectId, 中文名]
+        String[] potion = readPotion(item, baseMaterial);
+
+        // 玩家头头像（API）
+        String skullAvatar = isSkull(baseMaterial) ? readSkullAvatar(item) : null;
+
+        // 合成分组键：不同附魔 / 不同药水 在列表中独立分类
+        if (potion != null) {
+            e.material = baseMaterial + "|" + potion[1];
+        } else if (!enchants.isEmpty()) {
+            // 例：ENCHANTED_BOOK|protection4+unbreaking3
+            StringBuilder sig = new StringBuilder();
+            for (ShopEntry.Enchant en : enchants) {
+                if (sig.length() > 0) sig.append('+');
+                sig.append(en.id).append(en.level);
+            }
+            e.material = baseMaterial + "|" + sig;
+            e.enchants = enchants;
+        } else {
+            e.material = baseMaterial;
+        }
+
+        // 名称：商店自定义名 > 物品显示名 > 药水名 > 材质中文名；再加附魔后缀
         String custom = asString(call(shop, "getName", "getShopName"));
         if (custom != null) {
             custom = custom.trim();
             if (custom.isEmpty() || custom.contains("Component@") || custom.startsWith("Component{")) custom = null;
         }
-        String cn = Materials.cn(e.material);
-        e.item_name = custom != null ? custom : cn;
-        e.shop_cn_name = custom != null && hasChinese(custom) ? custom : cn;
-        e.item_image = "item/" + Materials.imageName(e.material) + ".png";
+        String displayName;
+        if (custom != null) {
+            displayName = custom;
+        } else if (itemDisplayName != null) {
+            displayName = itemDisplayName;
+        } else if (potion != null) {
+            displayName = potion[2];
+        } else {
+            displayName = Materials.cn(baseMaterial);
+        }
+        if (potion == null && !suffix.isEmpty()) {
+            boolean has = false;
+            for (ShopEntry.Enchant en : enchants) {
+                if (displayName.contains(en.name)) {
+                    has = true;
+                    break;
+                }
+            }
+            if (!has) displayName = displayName + " · " + suffix;
+        }
+        if (displayName.length() > 120) displayName = displayName.substring(0, 120);
+        e.item_name = displayName;
+        e.shop_cn_name = displayName;
+        e.item_image = skullAvatar != null
+                ? skullAvatar
+                : "item/" + Materials.imageName(baseMaterial) + ".png";
 
-        // 店主
+        // 店主（系统商店 owner 可能为空/控制台）
         Object owner = call(shop, "getOwner");
         if (owner != null) {
             e.owner_name = asString(call(owner, "getUsername"));
+            if (e.owner_name == null || e.owner_name.trim().isEmpty()) {
+                e.owner_name = asString(call(owner, "getName"));
+            }
             Object uuid = unwrap(call(owner, "getUniqueId"));
             if (uuid != null) e.owner_uuid = String.valueOf(uuid);
             Object real = unwrap(call(owner, "isRealPlayer", "isPlayer"));
             if (real instanceof Boolean) e.system_shop = !((Boolean) real);
+            Object console = unwrap(call(owner, "isConsole"));
+            if (console instanceof Boolean && (Boolean) console) e.system_shop = true;
+            if (!e.system_shop && e.owner_uuid != null) {
+                String u = e.owner_uuid.toUpperCase(Locale.ROOT);
+                if (u.equals("00000000-0000-0000-0000-000000000000") || u.contains("CONSOLE")) {
+                    e.system_shop = true;
+                }
+            }
         }
         if (!e.system_shop) {
             Object unlim = unwrap(call(shop, "isUnlimited"));
-            if (unlim instanceof Boolean) e.system_shop = (Boolean) unlim;
+            if (unlim instanceof Boolean && (Boolean) unlim) e.system_shop = true;
         }
-        if (e.owner_name == null) e.owner_name = e.system_shop ? "系统商店" : "unknown";
+        if (e.owner_name == null || e.owner_name.trim().isEmpty()) {
+            e.owner_name = e.system_shop ? "系统商店" : "unknown";
+        }
 
         // 位置
         Object loc = unwrap(call(shop, "getLocation", "bukkitLocation"));
@@ -497,6 +561,233 @@ public final class QuickShopBridge {
             return s;
         }
         return String.format(Locale.US, "%,.2f", v);
+    }
+
+    /** 读取物品附魔（优先附魔书的 stored 附魔；兼容多版本方法名） */
+    private static List<ShopEntry.Enchant> readEnchants(Object item) {
+        List<ShopEntry.Enchant> list = new ArrayList<>(4);
+        if (item == null) return list;
+        Object meta;
+        try {
+            meta = call(item, "getItemMeta");
+        } catch (Throwable t) {
+            return list;
+        }
+        if (meta == null) return list;
+        Map<?, ?> map = null;
+        for (String cand : new String[]{"getStoredEnchants", "getEnchants", "getEnchantments"}) {
+            try {
+                Object m = call(meta, cand);
+                if (m instanceof Map && !((Map<?, ?>) m).isEmpty()) {
+                    map = (Map<?, ?>) m;
+                    break;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        if (map == null) return list;
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            Object ench = entry.getKey();
+            if (ench == null || !(entry.getValue() instanceof Number)) continue;
+            int lvl = Math.max(1, ((Number) entry.getValue()).intValue());
+            String id = null;
+            Object nsKey = call(ench, "getKey");
+            if (nsKey instanceof String) {
+                id = (String) nsKey;
+            } else if (nsKey != null) {
+                id = asString(call(nsKey, "getKey"));
+            }
+            if (id == null) id = asString(ench);
+            if (id == null) continue;
+            id = id.toLowerCase(Locale.ROOT);
+            if (id.startsWith("minecraft:")) id = id.substring("minecraft:".length());
+            if (id.isEmpty() || id.contains(" ") || id.contains("@") || id.length() > 48) continue;
+            ShopEntry.Enchant en = new ShopEntry.Enchant();
+            en.id = id;
+            en.name = Materials.enchantment(id);
+            en.level = lvl;
+            en.text = en.name + " " + Materials.roman(lvl);
+            list.add(en);
+        }
+        list.sort((a, b) -> a.id.compareTo(b.id));
+        return list;
+    }
+
+    /** 附魔展示后缀：“锋利 V、保护 IV”（最多展示 3 个） */
+    private static String enchantSuffix(List<ShopEntry.Enchant> list) {
+        if (list == null || list.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.size(); i++) {
+            if (i >= 3) {
+                sb.append(" 等");
+                break;
+            }
+            if (i > 0) sb.append("、");
+            sb.append(list.get(i).text);
+        }
+        return sb.toString();
+    }
+
+    /** 容器类型 → 中文名表前缀；非药水返回 null */
+    private static String potionContainer(String material) {
+        switch (material) {
+            case "POTION": return "potion";
+            case "SPLASH_POTION": return "splash";
+            case "LINGERING_POTION": return "lingering";
+            case "TIPPED_ARROW": return "tipped";
+            default: return null;
+        }
+    }
+
+    /**
+     * 读取药水信息。
+     *
+     * @return [container, effectId, 中文名]；非药水或读取失败返回 null
+     */
+    private static String[] readPotion(Object item, String baseMaterial) {
+        String container = potionContainer(baseMaterial);
+        if (container == null || item == null) return null;
+        Object meta;
+        try {
+            meta = call(item, "getItemMeta");
+        } catch (Throwable t) {
+            return null;
+        }
+        if (meta == null) return null;
+
+        String effectId = null;
+
+        // 1) 新 API（1.20.5+）：getBasePotionType() → PotionType（带 key，如 healing/strong_healing）
+        try {
+            Object pt = call(meta, "getBasePotionType");
+            if (pt != null) {
+                Object ns = call(pt, "getKey");
+                if (ns != null) effectId = asString(call(ns, "getKey"));
+                if (effectId == null) effectId = asString(pt);
+                if (effectId != null) effectId = effectId.toLowerCase(Locale.ROOT);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // 2) 旧 API：getBasePotionData() → PotionData（枚举 + upgraded/extended）
+        if (effectId == null) {
+            try {
+                Object pd = call(meta, "getBasePotionData");
+                if (pd != null) {
+                    String t = asString(call(pd, "getType"));
+                    if (t != null && !t.isEmpty()) {
+                        t = t.toLowerCase(Locale.ROOT);
+                        if ("uncraftable".equals(t)) {
+                            effectId = "empty";
+                        } else {
+                            boolean up = Boolean.TRUE.equals(unwrap(call(pd, "isUpgraded")));
+                            boolean ext = Boolean.TRUE.equals(unwrap(call(pd, "isExtended")));
+                            if (up) effectId = "strong_" + t;
+                            else if (ext) effectId = "long_" + t;
+                            else effectId = t;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
+        if (effectId != null && !effectId.isEmpty()) {
+            if (effectId.startsWith("minecraft:")) effectId = effectId.substring("minecraft:".length());
+            return new String[]{container, effectId, Materials.potionName(container, effectId)};
+        }
+
+        // 3) 自定义效果列表 getCustomEffects() → List<PotionEffect>
+        try {
+            Object custom = call(meta, "getCustomEffects");
+            if (custom instanceof Iterable) {
+                StringBuilder sig = new StringBuilder();
+                StringBuilder name = new StringBuilder();
+                int count = 0;
+                for (Object eff : (Iterable<?>) custom) {
+                    Object type = call(eff, "getType");
+                    if (type == null) continue;
+                    Object ns = call(type, "getKey");
+                    String eid = ns != null ? asString(call(ns, "getKey")) : asString(type);
+                    if (eid == null) continue;
+                    eid = eid.toLowerCase(Locale.ROOT);
+                    if (eid.startsWith("minecraft:")) eid = eid.substring("minecraft:".length());
+                    int amp = asInt(call(eff, "getAmplifier"), 0) + 1;
+                    if (count > 0) {
+                        sig.append('+');
+                        name.append('、');
+                    }
+                    sig.append(eid).append(amp);
+                    name.append(Materials.potionName(container, eid)).append(' ').append(Materials.roman(amp));
+                    count++;
+                    if (count >= 3) break;
+                }
+                if (count > 0) {
+                    return new String[]{container, sig.toString(), name.toString()};
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static boolean isSkull(String material) {
+        return "PLAYER_HEAD".equals(material) || "SKULL".equals(material) || "SKULL_ITEM".equals(material);
+    }
+
+    /** 玩家头 → 头像 API URL（按头颅主人名字 / UUID） */
+    private static String readSkullAvatar(Object item) {
+        if (item == null) return null;
+        try {
+            Object meta = call(item, "getItemMeta");
+            if (meta == null) return null;
+            String name = null;
+            String uuid = null;
+            Object owner = call(meta, "getOwningPlayer");
+            if (owner != null) {
+                name = asString(call(owner, "getName"));
+                Object u = unwrap(call(owner, "getUniqueId"));
+                if (u != null) uuid = String.valueOf(u);
+            }
+            if (name == null || name.isEmpty()) {
+                Object own = call(meta, "getOwner");
+                if (own instanceof String && !((String) own).isEmpty()) {
+                    name = (String) own;
+                } else if (own != null) {
+                    String n2 = asString(call(own, "getName"));
+                    if (n2 != null && !n2.isEmpty()) name = n2;
+                    Object u2 = unwrap(call(own, "getUniqueId"));
+                    if (u2 != null && uuid == null) uuid = String.valueOf(u2);
+                }
+            }
+            String key = (name != null && !name.isEmpty()) ? name : uuid;
+            if (key == null || key.isEmpty()) return null;
+            key = key.trim();
+            if (key.length() > 64 || key.equalsIgnoreCase("unknown")) return null;
+            return "https://mc-heads.net/avatar/" + java.net.URLEncoder.encode(key, "UTF-8") + "/64";
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 物品自定义显示名（清理颜色代码）；与默认名相同或空时返回 null */
+    private static String readItemDisplayName(Object item, String baseMaterial) {
+        if (item == null) return null;
+        try {
+            Object meta = call(item, "getItemMeta");
+            if (meta == null) return null;
+            String dn = asString(call(meta, "getDisplayName"));
+            if (dn == null) return null;
+            dn = dn.replaceAll("§.", "").trim();
+            if (dn.isEmpty() || dn.contains("Component@") || dn.startsWith("Component{")) return null;
+            String readable = baseMaterial.replace('_', ' ');
+            if (dn.equalsIgnoreCase(readable)) return null;
+            if (dn.equalsIgnoreCase(Materials.cn(baseMaterial))) return null;
+            if (dn.length() > 64) dn = dn.substring(0, 64);
+            return dn;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     public static boolean hasChinese(String s) {

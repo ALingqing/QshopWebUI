@@ -20,6 +20,7 @@ public final class ApiRouter {
     private final AuthApi authApi;
     private final AdminApi adminApi;
     private final BackupApi backupApi;
+    private final PurchaseApi purchaseApi;
 
     public ApiRouter(QShopWebUIPlugin plugin) {
         this.plugin = plugin;
@@ -30,6 +31,7 @@ public final class ApiRouter {
         this.authApi = new AuthApi(plugin);
         this.adminApi = new AdminApi(plugin);
         this.backupApi = new BackupApi(plugin);
+        this.purchaseApi = new PurchaseApi(plugin);
     }
 
     public HttpResponse handle(HttpRequest req) {
@@ -168,6 +170,9 @@ public final class ApiRouter {
                 return authApi.register(req);
             case "/api/auth/change-password":
                 return authApi.changePassword(req);
+
+            case "/api/purchase":
+                return purchaseApi.purchase(req);
 
             case "/api/harbor":
                 if ("GET".equals(m)) return shopApi.harborGet(req);

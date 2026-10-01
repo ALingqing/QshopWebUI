@@ -29,6 +29,10 @@ public final class PluginConfig {
     public int playerShopMaxStock = 2000;
     public int playerShopLowStockThreshold = 10;
 
+    // === 网页在线购买 ===
+    public boolean purchaseEnabled = true;
+    public int purchaseMaxAmount = 64;
+
     // === 运行时解析结果 ===
     public boolean multiplex = false;
     public int mcPortResolved = 0;
@@ -54,6 +58,8 @@ public final class PluginConfig {
         cfg.playerShopMaxBuy = c.getInt("shop.player-max-buy", 1000);
         cfg.playerShopMaxStock = c.getInt("shop.player-max-stock", 2000);
         cfg.playerShopLowStockThreshold = c.getInt("shop.player-low-stock-threshold", 10);
+        cfg.purchaseEnabled = c.getBoolean("purchase.enabled", true);
+        cfg.purchaseMaxAmount = Math.max(1, c.getInt("purchase.max-amount", 64));
         return cfg;
     }
 

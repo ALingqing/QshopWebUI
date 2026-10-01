@@ -1798,6 +1798,18 @@
         : (shop.max_stock_capacity != null ? String(shop.max_stock_capacity) : '2000');
       tr('单次/库存上限', stockMax + ' 件');
     }
+
+    // —— 在线购买按钮（仅出售商店）——
+    if (!isBuying) {
+      card.appendChild(el('div', { class: 'shop-buy-bar' }, [
+        el('button', {
+          class: 'neo-btn primary purchase-btn',
+          text: '🛒 在线购买',
+          onclick: function () { showPurchaseModal(shop); }
+        })
+      ]));
+    }
+
     card.appendChild(info);
     return card;
   }
@@ -1887,8 +1899,122 @@
     tr('世界', shop.world || '-');
     tr('坐标', '(' + shop.x + ', ' + shop.y + ', ' + shop.z + ')');
     tr('店主', shop.owner_name || '-');
+
+    // —— 在线购买按钮（仅出售商店）——
+    if (shop.shop_type !== 'BUYING') {
+      card.appendChild(el('div', { class: 'shop-buy-bar' }, [
+        el('button', {
+          class: 'neo-btn primary purchase-btn',
+          text: '🛒 在线购买',
+          onclick: function () { showPurchaseModal(shop); }
+        })
+      ]));
+    }
+
     card.appendChild(info);
     return card;
+  }
+
+  //  在线购买弹窗（玩家必须在线）
+  function showPurchaseModal(shop) {
+    const unitPrice = Number(shop.price || 0);
+    const unitDisplay = (shop.price_display !== undefined && shop.price_display !== null)
+      ? String(shop.price_display)
+      : unitPrice.toFixed(2);
+    const stackAmount = Math.max(1, parseInt(shop.stacking_amount, 10) || 1);
+    const itemName = shop.shop_cn_name || shop.item_name || shop.material || '物品';
+
+    let savedName = '';
+    try { savedName = localStorage.getItem('qsw_player_name') || ''; } catch (e) { }
+
+    const nameInput = el('input', {
+      type: 'text', class: 'purchase-input', placeholder: '请输入你的游戏 ID（必须在线）',
+      value: savedName, maxlength: '16', style: { width: '100%' }
+    });
+    const qtyInput = el('input', {
+      type: 'number', class: 'purchase-input purchase-qty', value: '1',
+      min: '1', max: '64', style: { width: '110px' }
+    });
+    const summary = el('div', { class: 'purchase-summary' });
+
+    function currentQty() {
+      return Math.max(1, Math.min(64, parseInt(qtyInput.value, 10) || 1));
+    }
+    function refreshSummary() {
+      const q = currentQty();
+      const total = Math.round(unitPrice * q * 100) / 100;
+      summary.textContent = '单价 $' + unitDisplay + ' × ' + q + ' 份 = 总计 $' + total.toFixed(2);
+    }
+    qtyInput.addEventListener('input', refreshSummary);
+    refreshSummary();
+
+    const bodyNode = el('div', { class: 'purchase-dialog' }, [
+      el('div', { class: 'purchase-item' }, [
+        shop.item_image ? el('img', {
+          class: 'purchase-img', src: shop.item_image, alt: '',
+          onerror: function () { this.style.display = 'none'; }
+        }) : null,
+        el('div', { style: { minWidth: '0', flex: '1' } }, [
+          el('div', { class: 'purchase-name', text: itemName }),
+          el('div', { class: 'purchase-sub', text: '店主: ' + (shop.owner_name || '系统商店') + ' · 世界: ' + (shop.world || '-') + ' · (' + shop.x + ', ' + shop.y + ', ' + shop.z + ')' })
+        ])
+      ]),
+      el('div', { class: 'purchase-field' }, [
+        el('label', { class: 'purchase-label', text: '游戏 ID（必须正在游戏中）' }),
+        nameInput
+      ]),
+      el('div', { class: 'purchase-field' }, [
+        el('label', { class: 'purchase-label', text: '购买份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
+        qtyInput
+      ]),
+      summary,
+      el('div', { class: 'purchase-tip', text: '⚠ 物品将直接放入背包（装不下会掉落脚下）；费用从游戏内余额扣除。' })
+    ]);
+
+    let modalRef = null;
+    modalRef = Modal.show({
+      title: '在线购买 · ' + itemName,
+      body: bodyNode,
+      confirmText: '确认购买',
+      onConfirm: function () {
+        const player = nameInput.value.trim();
+        if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
+        if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
+        const qty = currentQty();
+        try { modalRef.setProcessing('处理中...'); } catch (e) { }
+        QSDB.purchaseShop(shop.shop_id, player, qty).then(function (r) {
+          if (r && r.success) {
+            try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
+            Toast.show('✓ 购买成功：' + r.item + ' ×' + r.amount + ' 份，花费 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
+            QSDB.clearCache();
+            try { modalRef.close(); } catch (e) { }
+            // 稍后刷新当前物品详情页（库存已变化）
+            setTimeout(function () {
+              try {
+                const content = $('#content-area');
+                if (!content) return;
+                const panels = content.querySelectorAll('.tab-panel');
+                for (let i = 0; i < panels.length; i++) {
+                  const p = panels[i];
+                  if (p.style.display !== 'none' && p.dataset.tab === 'itemDetail_' + (shop.material || '')) {
+                    p.innerHTML = '';
+                    renderIntoPanel(p, function () { return initItemDetail(shop.material); });
+                    break;
+                  }
+                }
+              } catch (e) { }
+            }, 400);
+          } else {
+            Toast.show('购买失败：' + ((r && r.error) || '未知错误'), 'error');
+            try { modalRef.setDone('确认购买'); } catch (e) { }
+          }
+        }).catch(function (e) {
+          Toast.show('购买失败：' + (e && e.message ? e.message : e), 'error');
+          try { modalRef.setDone('确认购买'); } catch (e2) { }
+        });
+        return false; // 异步处理，保持弹窗开启
+      }
+    });
   }
 
   //  商店浏览页 (独立)

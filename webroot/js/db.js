@@ -999,6 +999,19 @@
       } catch (e) {
         return { success: false, error: e.message };
       }
+    },
+
+    // 网页「在线购买」：玩家必须在游戏内在线
+    purchaseShop: async function (shopId, player, amount) {
+      try {
+        const data = await apiCall('/purchase', {
+          method: 'POST',
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1 }
+        });
+        return data || { success: false, error: '服务器无响应' };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
   };
 

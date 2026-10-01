@@ -1,5 +1,7 @@
 package com.qshop.webui.data;
 
+import java.util.List;
+
 /**
  * 商店数据模型——字段名与前端期望的 JSON 完全一致（snake_case）。
  */
@@ -32,6 +34,16 @@ public final class ShopEntry {
     public double price_raw;
     /** 系统（管理员）商店标记；普通商店为 null */
     public Boolean is_system_shop;
+    /** 物品附魔列表（附魔书 / 附魔装备）；无附魔为 null */
+    public List<Enchant> enchants;
+
+    /** 单条附魔信息 */
+    public static final class Enchant {
+        public String id;     // sharpness
+        public String name;   // 锋利
+        public int level;     // 5
+        public String text;   // 锋利 V
+    }
 
     // ==== 内部字段（不序列化） ====
     public transient boolean system_shop;

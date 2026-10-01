@@ -1,11 +1,13 @@
 package com.qshop.webui;
 
 import com.qshop.webui.auth.SessionManager;
+import com.qshop.webui.bridge.EconomyBridge;
 import com.qshop.webui.bridge.QuickShopBridge;
 import com.qshop.webui.data.RequestStats;
 import com.qshop.webui.data.ShopDataService;
 import com.qshop.webui.data.WebStore;
 import com.qshop.webui.http.WebServer;
+import com.qshop.webui.purchase.PurchaseService;
 import com.qshop.webui.util.Materials;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -32,6 +34,8 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private SessionManager sessions;
     private RequestStats requestStats;
     private WebServer webServer;
+    private EconomyBridge economy;
+    private PurchaseService purchases;
 
     // ============================================================
     // 生命周期
@@ -54,6 +58,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
         bridge = new QuickShopBridge(this);
         bridge.reload();
+
+        economy = new EconomyBridge(this);
+        economy.reload();
+        purchases = new PurchaseService(this);
 
         shopData = new ShopDataService(this, bridge);
         sessions = new SessionManager(this);
@@ -202,6 +210,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         config = PluginConfig.load(this);
         config.resolve(resolveServerPort());
         bridge.reload();
+        economy.reload();
         stopWeb();
         startWeb();
     }
@@ -258,6 +267,14 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public WebServer webServer() {
         return webServer;
+    }
+
+    public EconomyBridge economy() {
+        return economy;
+    }
+
+    public PurchaseService purchases() {
+        return purchases;
     }
 
     /** 网页修改密码后刷新内存中的配置 */
