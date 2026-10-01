@@ -521,7 +521,7 @@
       if (raw) {
         document.title = raw + ' — Minecraft 商店';
         const logo = document.querySelector('.topnav-logo');
-        if (logo) logo.textContent = '🟪 ' + raw;
+        if (logo) logo.textContent = raw;
         const loader = document.querySelector('.loader-title');
         if (loader) loader.textContent = raw;
         const heroTitle = document.querySelector('.home-hero-title');

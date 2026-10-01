@@ -23,7 +23,7 @@ console.log('✓ config.yml（server-name: 清屿在线商店 / server-subtitle:
 let html = fs.readFileSync(path.join(root, 'webroot', 'index.html'), 'utf8');
 html = html.replace('<title>Qshop — Minecraft 商店管理系统</title>', '<title>清屿在线商店</title>');
 html = html.replace('<div class="loader-title">Qshop WebUI</div>', '<div class="loader-title">清屿在线商店</div>');
-html = html.replace('<div class="topnav-logo">🟪 Qshop WebUI</div>', '<div class="topnav-logo">🟪 清屿在线商店</div>');
+html = html.replace('<div class="topnav-logo">Qshop WebUI</div>', '<div class="topnav-logo">清屿在线商店</div>');
 fs.mkdirSync(path.join(dst, 'web'), { recursive: true });
 fs.writeFileSync(path.join(dst, 'web', 'index.html'), html, 'utf8');
 console.log('✓ web/index.html（定制版首页：标题/Logo = 清屿在线商店）');
