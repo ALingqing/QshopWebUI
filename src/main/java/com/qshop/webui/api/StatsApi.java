@@ -107,6 +107,8 @@ public final class StatsApi extends ApiBase {
         put(o, "version", plugin.getDescription().getVersion());
         String sn = plugin.config().serverName;
         put(o, "server_name", (sn == null || sn.isEmpty()) ? null : sn);
+        String ss = plugin.config().serverSubtitle;
+        put(o, "server_subtitle", (ss == null || ss.isEmpty()) ? null : ss);
         put(o, "timestamp", JsonUtil.isoNow());
         put(o, "response_time_ms", System.currentTimeMillis() - t0);
         o.add("qsfilter", qsfilterBlock());

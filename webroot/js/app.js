@@ -512,17 +512,25 @@
 
   //  服务器名称（config.yml 的 server-name）：显示在浏览器标题、导航栏、首页大标题
   let siteServerName = '';
+  let siteServerSubtitle = '';
   function applySiteBrand() {
     try {
       const raw = (siteServerName || '').trim();
-      if (!raw) return; // 未配置：保持默认
-      document.title = raw + ' — Minecraft 商店';
-      const logo = document.querySelector('.topnav-logo');
-      if (logo) logo.textContent = '🟪 ' + raw;
-      const loader = document.querySelector('.loader-title');
-      if (loader) loader.textContent = raw;
-      const heroTitle = document.querySelector('.home-hero-title');
-      if (heroTitle) heroTitle.textContent = raw;
+      const sub = (siteServerSubtitle || '').trim();
+      if (!raw && !sub) return; // 未配置：保持默认
+      if (raw) {
+        document.title = raw + ' — Minecraft 商店';
+        const logo = document.querySelector('.topnav-logo');
+        if (logo) logo.textContent = '🟪 ' + raw;
+        const loader = document.querySelector('.loader-title');
+        if (loader) loader.textContent = raw;
+        const heroTitle = document.querySelector('.home-hero-title');
+        if (heroTitle) heroTitle.textContent = raw;
+      }
+      if (sub) {
+        const heroSub = document.querySelector('.home-hero-subtitle');
+        if (heroSub) heroSub.textContent = sub;
+      }
     } catch (e) { }
   }
 
@@ -945,7 +953,7 @@
     // 页面标题区
     const header = el('div', { class: 'home-hero' }, [
       el('h2', { class: 'home-hero-title', text: siteServerName ? siteServerName : 'Qshop 商店系统' }),
-      el('div', { class: 'home-hero-subtitle', text: 'Minecraft 服务器商店数据汇总与价格查询平台' })
+      el('div', { class: 'home-hero-subtitle', text: siteServerSubtitle ? siteServerSubtitle : 'Minecraft 服务器商店数据汇总与价格查询平台' })
     ]);
     root.appendChild(header);
 
@@ -2977,8 +2985,9 @@
 
     // 服务器名称（config.yml server-name）→ 更新标题/导航栏/首页
     QSDB.getHealth().then(function (h) {
-      if (h && h.success && h.server_name) {
-        siteServerName = String(h.server_name);
+      if (h && h.success) {
+        if (h.server_name) siteServerName = String(h.server_name);
+        if (h.server_subtitle) siteServerSubtitle = String(h.server_subtitle);
         applySiteBrand();
       }
     }).catch(function () { });
