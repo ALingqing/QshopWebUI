@@ -1,0 +1,42 @@
+[
+ {
+  "material": "BAMBOO_SAPLING",
+  "img": "bamboo_sapling"
+ },
+ {
+  "material": "DEBUG_STICK",
+  "img": "debug_stick"
+ },
+ {
+  "material": "DEEPSLATE_TILE_SLAB",
+  "img": "deepslate_tile_slab"
+ },
+ {
+  "material": "DEEPSLATE_TILE_STAIRS",
+  "img": "deepslate_tile_stairs"
+ },
+ {
+  "material": "DEEPSLATE_TILE_WALL",
+  "img": "deepslate_tile_wall"
+ },
+ {
+  "material": "LAVA_CAULDRON",
+  "img": "lava_cauldron"
+ },
+ {
+  "material": "LODESTONE_COMPASS",
+  "img": "lodestone_compass"
+ },
+ {
+  "material": "POWDER_SNOW_CAULDRON",
+  "img": "powder_snow_cauldron"
+ },
+ {
+  "material": "REDSTONE_WIRE",
+  "img": "redstone_wire"
+ },
+ {
+  "material": "WATER_CAULDRON",
+  "img": "water_cauldron"
+ }
+]
