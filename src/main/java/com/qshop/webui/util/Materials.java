@@ -116,6 +116,29 @@ public final class Materials {
         String v = POTION.get(container + ":" + id);
         if (v == null && id.contains(":")) v = POTION.get(container + ":" + id.substring(id.indexOf(':') + 1));
         if (v != null) return v;
+        // 长效/强化变体：新版游戏已删除 long_/strong_ 独立翻译键 → 基础名 + 中文修饰词组合
+        String modZh = null;
+        String baseId = id;
+        if (id.startsWith("long_")) {
+            modZh = "长效";
+            baseId = id.substring("long_".length());
+        } else if (id.startsWith("strong_")) {
+            modZh = "强化";
+            baseId = id.substring("strong_".length());
+        }
+        if (modZh != null) {
+            String bn = POTION.get(container + ":" + baseId);
+            if (bn == null) bn = POTION.get("potion:" + baseId);
+            if (bn != null) {
+                // 药水/药箭：修饰词在最前（长效水肺药水 / 长效水肺之箭）
+                if (container.equals("potion") || container.equals("tipped")) return modZh + bn;
+                // 喷溅/滞留：插在容器词后（喷溅型长效水肺药水）
+                for (String q : new String[]{"喷溅型", "滞留型"}) {
+                    if (bn.startsWith(q)) return q + modZh + bn.substring(q.length());
+                }
+                return modZh + bn;
+            }
+        }
         // 退回普通药水名
         String base = POTION.get("potion:" + id);
         if (base != null) return base;
