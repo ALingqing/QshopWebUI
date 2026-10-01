@@ -2539,6 +2539,80 @@
     visCard.appendChild(visSave);
     root.appendChild(visCard);
 
+    // --- 卡片 0.5: 交易统计（购买 / 收购） ---
+    const tradeCard = el('div', { class: 'admin-card' }, [
+      el('h3', { text: '📈 交易统计（购买 / 收购）' }),
+      el('p', { class: 'hint', text: '记录网页交易与游戏内交易；可导出 CSV 到 Excel 统计。' })
+    ]);
+    const tradeStats = el('div', { style: { display: 'flex', gap: '24px', flexWrap: 'wrap', margin: '10px 0', fontSize: '14px', fontWeight: '600' } });
+    tradeCard.appendChild(tradeStats);
+    const tradeBtns = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap' } });
+    const exportTradesBtn = el('button', { class: 'neo-btn primary', text: '导出交易记录 CSV' });
+    const clearTradesBtn = el('button', { class: 'neo-btn danger', text: '清空交易记录' });
+    tradeBtns.appendChild(exportTradesBtn);
+    tradeBtns.appendChild(clearTradesBtn);
+    tradeCard.appendChild(tradeBtns);
+    root.appendChild(tradeCard);
+
+    let tradesCache = [];
+    async function loadTradesPanel() {
+      tradeStats.textContent = '加载中...';
+      const r = await QSDB.getTrades();
+      if (!r || !r.success) {
+        tradeStats.textContent = '加载失败: ' + ((r && r.error) || '未知错误（需要管理员登录）');
+        return;
+      }
+      tradesCache = r.trades || [];
+      const s = r.stats || {};
+      tradeStats.innerHTML = '';
+      tradeStats.appendChild(el('span', { text: '购买: ' + (s.buy_count || 0) + ' 笔 · $' + (s.buy_total || 0) + ' · ' + (s.buy_items || 0) + ' 件' }));
+      tradeStats.appendChild(el('span', { text: '收购: ' + (s.sell_count || 0) + ' 笔 · $' + (s.sell_total || 0) + ' · ' + (s.sell_items || 0) + ' 件' }));
+      tradeStats.appendChild(el('span', { text: '明细共 ' + tradesCache.length + ' 条' }));
+    }
+    exportTradesBtn.onclick = function () {
+      if (!tradesCache.length) { Toast.show('暂无交易记录', 'warning'); return; }
+      const head = ['时间', '类型', '来源', '玩家', '物品', '材质', '份数', '物品数量', '单价', '总额', '商店ID', '店主', '玩家在线'];
+      const cell = function (v) {
+        const s = String(v == null ? '' : v);
+        return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      const rows = tradesCache.map(function (t) {
+        const d = new Date(Number(t.t) || 0);
+        const time = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        return [time, t.type === 'BUY' ? '购买' : '收购', t.source === 'game' ? '游戏内' : '网页', t.player, t.item, t.material,
+          t.amount, t.items, t.unit_price, t.total, t.shop_id, t.owner, t.online ? '是' : '否'];
+      });
+      const csv = '\uFEFF' + [head].concat(rows).map(function (r) { return r.map(cell).join(','); }).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'qshop-trades-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+      Toast.show('已导出 ' + tradesCache.length + ' 条交易记录', 'success');
+    };
+    clearTradesBtn.onclick = function () {
+      Modal.confirm({
+        title: '清空交易记录',
+        danger: true,
+        body: '<div>确定清空全部交易记录吗？<b>此操作不可恢复</b>。</div>',
+        confirmText: '确认清空',
+        onConfirm: async function () {
+          const r2 = await QSDB.clearTrades();
+          if (r2 && r2.success) {
+            Toast.show('交易记录已清空', 'success');
+            loadTradesPanel();
+          } else {
+            Toast.show('清空失败: ' + ((r2 && r2.error) || '未知错误'), 'error');
+          }
+        }
+      });
+    };
+    loadTradesPanel();
+
     // --- 卡片 1: 生成测试数据 + 强制终止 ---
     const seedCard = el('div', { class: 'admin-card' }, [
       el('h3', { text: '生成测试数据' }),

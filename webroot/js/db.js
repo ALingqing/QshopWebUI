@@ -1082,9 +1082,19 @@
         return { success: false, hidden_pages: [], error: e.message };
       }
     },
-    setPages: async function (hidden) {
+    // 交易记录（购买/收购）与统计：管理员
+    getTrades: async function () {
       try {
-        const data = await apiCall('/pages', { method: 'POST', body: { hidden: hidden || [] } });
+        cacheClear();
+        const data = await apiCall('/trades', { method: 'GET' });
+        return data || { success: false, trades: [], stats: {} };
+      } catch (e) {
+        return { success: false, trades: [], stats: {}, error: e.message };
+      }
+    },
+    clearTrades: async function () {
+      try {
+        const data = await apiCall('/trades/clear', { method: 'POST', body: {} });
         return data || { success: false };
       } catch (e) {
         return { success: false, error: e.message };

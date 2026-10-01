@@ -249,6 +249,21 @@ public final class PurchaseService {
             plugin.shopData().invalidate();
             plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "purchase",
                     name + " 网页购买 " + e.shop_cn_name + " x" + amount + " 花费 " + total);
+            JsonObject trade = new JsonObject();
+            trade.addProperty("t", System.currentTimeMillis());
+            trade.addProperty("type", "BUY");
+            trade.addProperty("source", "web");
+            trade.addProperty("shop_id", e.shop_id);
+            trade.addProperty("item", e.shop_cn_name);
+            trade.addProperty("material", e.material);
+            trade.addProperty("amount", amount);
+            trade.addProperty("items", needItems);
+            trade.addProperty("unit_price", unit);
+            trade.addProperty("total", total);
+            trade.addProperty("player", name);
+            trade.addProperty("owner", e.owner_name);
+            trade.addProperty("online", online);
+            plugin.store().addTrade(trade);
 
             JsonObject o = new JsonObject();
             o.addProperty("success", true);
@@ -363,6 +378,21 @@ public final class PurchaseService {
             plugin.shopData().invalidate();
             plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "sell",
                     name + " 网页出售 " + e.shop_cn_name + " x" + amount + " 获得 " + total);
+            JsonObject trade = new JsonObject();
+            trade.addProperty("t", System.currentTimeMillis());
+            trade.addProperty("type", "SELL");
+            trade.addProperty("source", "web");
+            trade.addProperty("shop_id", e.shop_id);
+            trade.addProperty("item", e.shop_cn_name);
+            trade.addProperty("material", e.material);
+            trade.addProperty("amount", amount);
+            trade.addProperty("items", needItems);
+            trade.addProperty("unit_price", unit);
+            trade.addProperty("total", total);
+            trade.addProperty("player", name);
+            trade.addProperty("owner", e.owner_name);
+            trade.addProperty("online", true);
+            plugin.store().addTrade(trade);
 
             JsonObject o = new JsonObject();
             o.addProperty("success", true);

@@ -21,6 +21,85 @@ public final class AdminApi extends ApiBase {
     }
 
     // ============================================================
+    // GET /api/trades  交易记录（购买/收购）+ 汇总统计
+    // ============================================================
+
+    public HttpResponse trades(HttpRequest req) {
+        HttpResponse deny = adminOnly(req);
+        if (deny != null) return deny;
+        String type = req.param("type", "").trim().toUpperCase(Locale.ROOT);
+        String player = req.param("player", "").trim().toLowerCase(Locale.ROOT);
+        String material = req.param("material", "").trim();
+        long from = 0, to = Long.MAX_VALUE;
+        try {
+            from = Long.parseLong(req.param("from", "0"));
+        } catch (Exception ignored) {
+        }
+        try {
+            String t2 = req.param("to", "");
+            if (!t2.isEmpty()) to = Long.parseLong(t2);
+        } catch (Exception ignored) {
+        }
+
+        JsonArray arr = new JsonArray();
+        int buyCount = 0, sellCount = 0, matched = 0;
+        double buyTotal = 0, sellTotal = 0;
+        long buyItems = 0, sellItems = 0;
+        for (JsonObject t : plugin.store().tradesSnapshot()) {
+            boolean isBuy = "BUY".equals(t.has("type") ? t.get("type").getAsString() : "");
+            double total = t.has("total") ? t.get("total").getAsDouble() : 0;
+            long items = t.has("items") ? t.get("items").getAsLong() : 0;
+            if (isBuy) {
+                buyCount++;
+                buyTotal += total;
+                buyItems += items;
+            } else {
+                sellCount++;
+                sellTotal += total;
+                sellItems += items;
+            }
+            if (!type.isEmpty() && !type.equals(isBuy ? "BUY" : "SELL")) continue;
+            if (!player.isEmpty() && (!t.has("player") || !t.get("player").getAsString().toLowerCase(Locale.ROOT).contains(player)))
+                continue;
+            if (!material.isEmpty() && (!t.has("material") || !t.get("material").getAsString().equalsIgnoreCase(material)))
+                continue;
+            long ts = t.has("t") ? t.get("t").getAsLong() : 0;
+            if (ts < from || ts > to) continue;
+            arr.add(t);
+            matched++;
+        }
+
+        JsonObject stats = obj();
+        put(stats, "buy_count", buyCount);
+        put(stats, "sell_count", sellCount);
+        put(stats, "buy_total", Math.round(buyTotal * 100.0) / 100.0);
+        put(stats, "sell_total", Math.round(sellTotal * 100.0) / 100.0);
+        put(stats, "buy_items", buyItems);
+        put(stats, "sell_items", sellItems);
+
+        JsonObject o = obj();
+        put(o, "success", true);
+        o.add("stats", stats);
+        o.add("trades", arr);
+        put(o, "total", matched);
+        return HttpResponse.json(o);
+    }
+
+    // ============================================================
+    // POST /api/trades/clear  清空交易记录
+    // ============================================================
+
+    public HttpResponse tradeClear(HttpRequest req) {
+        HttpResponse deny = adminOnly(req);
+        if (deny != null) return deny;
+        plugin.store().clearTrades();
+        JsonObject o = obj();
+        put(o, "success", true);
+        put(o, "action", "cleared");
+        return HttpResponse.json(o);
+    }
+
+    // ============================================================
     // GET /api/admin/shops/search
     // ============================================================
 

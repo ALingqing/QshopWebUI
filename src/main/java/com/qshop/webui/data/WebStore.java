@@ -51,6 +51,9 @@ public final class WebStore {
     private final ConcurrentHashMap<String, JsonObject> users = new ConcurrentHashMap<>();
     /** 网页离线购买的待领取物品：玩家名(小写) → [{i:base64物品, n:数量, t:时间}] */
     private final ConcurrentHashMap<String, List<JsonObject>> pending = new ConcurrentHashMap<>();
+    /** 交易记录（购买/收购）：最近 MAX_TRADES 条 */
+    private final List<JsonObject> trades = new ArrayList<>();
+    private static final int MAX_TRADES = 10000;
 
     public WebStore(QShopWebUIPlugin plugin, File dataFolder) {
         this.plugin = plugin;
@@ -72,6 +75,7 @@ public final class WebStore {
         loadHarbor();
         loadUsers();
         loadPending();
+        loadTrades();
     }
 
     private JsonElement readJson(String name) {
@@ -582,6 +586,48 @@ public final class WebStore {
     }
 
     // ============================================================
+    // trades（交易记录：购买 / 收购，供统计与导出）
+    // ============================================================
+
+    private void loadTrades() {
+        try {
+            JsonElement el = readJson("trades.json");
+            if (el == null || !el.isJsonArray()) return;
+            for (JsonElement item : el.getAsJsonArray()) {
+                if (item.isJsonObject()) trades.add(item.getAsJsonObject());
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Store] 读取 trades.json 失败: " + e.getMessage());
+        }
+    }
+
+    /** 记录一笔交易（购买/收购） */
+    public synchronized void addTrade(JsonObject t) {
+        if (t == null) return;
+        trades.add(t);
+        while (trades.size() > MAX_TRADES) trades.remove(0);
+        saveTrades();
+    }
+
+    /** 全部交易记录快照 */
+    public synchronized List<JsonObject> tradesSnapshot() {
+        return new ArrayList<>(trades);
+    }
+
+    public synchronized void clearTrades() {
+        trades.clear();
+        saveTrades();
+    }
+
+    public void saveTrades() {
+        JsonArray arr = new JsonArray();
+        synchronized (this) {
+            for (JsonObject t : trades) arr.add(t);
+        }
+        writeJson("trades.json", arr);
+    }
+
+    // ============================================================
     // 备份导出 / 恢复
     // ============================================================
 
@@ -616,6 +662,11 @@ public final class WebStore {
             pendingJson.add(e.getKey(), arr);
         }
         o.add("pending", pendingJson);
+        JsonArray tradesArr = new JsonArray();
+        synchronized (this) {
+            for (JsonObject t : trades) tradesArr.add(t.deepCopy());
+        }
+        o.add("trades", tradesArr);
         return o;
     }
 

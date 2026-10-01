@@ -8,6 +8,7 @@ import com.qshop.webui.data.RequestStats;
 import com.qshop.webui.data.ShopDataService;
 import com.qshop.webui.data.WebStore;
 import com.qshop.webui.http.WebServer;
+import com.qshop.webui.listener.GameTradeListener;
 import com.qshop.webui.listener.PurchaseJoinListener;
 import com.qshop.webui.purchase.PurchaseService;
 import com.qshop.webui.util.Materials;
@@ -70,6 +71,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         authme = new AuthMeBridge(this);
         authme.reload();
         getServer().getPluginManager().registerEvents(new PurchaseJoinListener(this), this);
+        GameTradeListener.register(this);
 
         shopData = new ShopDataService(this, bridge);
         sessions = new SessionManager(this);
