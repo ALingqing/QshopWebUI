@@ -69,6 +69,9 @@ public final class ItemApi extends ApiBase {
                 boolean inMat = s.material != null && s.material.toLowerCase(Locale.ROOT).contains(q);
                 boolean inName = s.item_name != null && s.item_name.toLowerCase(Locale.ROOT).contains(q);
                 boolean inOwner = s.owner_name != null && s.owner_name.toLowerCase(Locale.ROOT).contains(q);
+                // 拼音 / 首字母搜索（蜘蛛 → zhizhu / zz）
+                if (!inName && s.item_name != null) inName = com.qshop.webui.util.Pinyin.matches(q, s.item_name);
+                if (!inName && s.shop_cn_name != null) inName = com.qshop.webui.util.Pinyin.matches(q, s.shop_cn_name);
                 if (!inMat && !inName && !inOwner) continue;
             }
             String mat = s.material == null ? "UNKNOWN" : s.material;

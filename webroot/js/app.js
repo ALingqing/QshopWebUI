@@ -1241,7 +1241,7 @@
 
     // 搜索框
     const searchWrap = el('div', { class: 'search-box' });
-    const searchInput = el('input', { type: 'text', placeholder: '搜索物品名 / 材质 / 店主...' });
+    const searchInput = el('input', { type: 'text', placeholder: '搜索物品名 / 材质 / 店主（支持拼音 zhizhu / 首字母 zz）' });
     const searchBtn = el('button', { class: 'search-btn', text: '搜索' });
     searchWrap.appendChild(searchInput);
     searchWrap.appendChild(searchBtn);
@@ -2228,7 +2228,7 @@
     ]));
 
     const toolbar = el('div', { class: 'toolbar', style: { marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' } });
-    const searchInput = el('input', { type: 'text', placeholder: '搜索物品 / 店主...', class: 'filter-input', style: { flex: '2', minWidth: '220px', padding: '10px 14px', border: '3px solid #000', borderRadius: '4px' } });
+    const searchInput = el('input', { type: 'text', placeholder: '搜索物品 / 店主（支持拼音 zhizhu / 首字母 zz）', class: 'filter-input', style: { flex: '2', minWidth: '220px', padding: '10px 14px', border: '3px solid #000', borderRadius: '4px' } });
     const sortSelect = el('select', { class: 'filter-select' });
     [['price_asc', '价格低→高'], ['price_desc', '价格高→低'], ['newest', '最新']].forEach(function (o) {
       sortSelect.appendChild(el('option', { value: o[0], text: o[1] }));
@@ -2435,7 +2435,7 @@
     root.appendChild(title);
 
     const toolbar = el('div', { class: 'toolbar', style: { marginBottom: '12px' } });
-    const searchInput = el('input', { type: 'text', placeholder: '搜索...', style: { flex: '2', minWidth: '280px', padding: '10px 14px', border: '3px solid #000', borderRadius: '4px' } });
+    const searchInput = el('input', { type: 'text', placeholder: '搜索...（支持拼音 zhizhu / 首字母 zz）', style: { flex: '2', minWidth: '280px', padding: '10px 14px', border: '3px solid #000', borderRadius: '4px' } });
     const matSelect = el('select', { class: 'filter-select' });
     matSelect.appendChild(el('option', { value: '', text: '全部物品' }));
     const sortSelect = el('select', { class: 'filter-select' });

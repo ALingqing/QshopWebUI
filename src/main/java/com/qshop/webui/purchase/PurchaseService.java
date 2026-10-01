@@ -196,7 +196,7 @@ public final class PurchaseService {
 
         // 库存检查（非系统商店）
         if (!e.system_shop) {
-            if (chestInv == null) return err("无法访问商店库存容器");
+            if (chestInv == null) return err("无法访问商店库存容器（商店所在区块加载失败或容器已被移除）");
             int available = countItems(chestInv, sample);
             if (available < needItems) {
                 long canBuy = available / Math.max(1, e.stacking_amount);
@@ -320,7 +320,7 @@ public final class PurchaseService {
         // 2) 非系统商店：容器容量 + 店主余额
         OfflinePlayer owner = null;
         if (!e.system_shop) {
-            if (chestInv == null) return err("无法访问商店库存容器");
+            if (chestInv == null) return err("无法访问商店库存容器（商店所在区块加载失败或容器已被移除）");
             if (!canFit(chestInv, sample, needItems)) return err("商店容器已满，暂时无法收购更多");
             if (e.owner_uuid != null) {
                 try {
@@ -380,15 +380,34 @@ public final class PurchaseService {
     private Inventory resolveInventory(Object shop) {
         try {
             Object loc = QuickShopBridge.unwrap(QuickShopBridge.call(shop, "getLocation", "bukkitLocation"));
-            if (loc instanceof Location) {
-                Location l = (Location) loc;
-                World w = l.getWorld();
-                if (w == null) return null;
-                BlockState st = w.getBlockAt(l.getBlockX(), l.getBlockY(), l.getBlockZ()).getState();
-                if (st instanceof Container) return ((Container) st).getInventory();
-                if (st instanceof org.bukkit.inventory.InventoryHolder) {
-                    return ((org.bukkit.inventory.InventoryHolder) st).getInventory();
+            if (!(loc instanceof Location)) return null;
+            Location l = (Location) loc;
+            World w = l.getWorld();
+            if (w == null) return null;
+            // 商店可能在未加载的区块 → 同步加载后再取容器（本方法在主线程执行）
+            try {
+                int cx = l.getBlockX() >> 4;
+                int cz = l.getBlockZ() >> 4;
+                if (!w.isChunkLoaded(cx, cz)) {
+                    w.getChunkAt(cx, cz); // 未加载时同步加载
                 }
+            } catch (Throwable ignored) {
+            }
+            BlockState st = w.getBlockAt(l.getBlockX(), l.getBlockY(), l.getBlockZ()).getState();
+            // 箱子（含陷阱箱/双箱）→ 取真实库存（非快照）
+            if (st instanceof org.bukkit.block.Chest) {
+                try {
+                    Inventory inv = ((org.bukkit.block.Chest) st).getBlockInventory();
+                    if (inv != null) return inv;
+                } catch (Throwable ignored) {
+                }
+            }
+            if (st instanceof Container) {
+                Inventory inv = ((Container) st).getInventory();
+                if (inv != null) return inv;
+            }
+            if (st instanceof org.bukkit.inventory.InventoryHolder) {
+                return ((org.bukkit.inventory.InventoryHolder) st).getInventory();
             }
         } catch (Throwable ignored) {
         }

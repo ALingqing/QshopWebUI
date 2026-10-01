@@ -49,6 +49,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         saveDefaultConfig();
         try {
             Materials.init(this);
+        com.qshop.webui.util.Pinyin.init(this);
         } catch (Throwable t) {
             getLogger().warning("材质中文表初始化失败: " + t);
         }

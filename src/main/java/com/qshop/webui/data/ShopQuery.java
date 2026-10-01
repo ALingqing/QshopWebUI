@@ -45,6 +45,9 @@ public final class ShopQuery {
                 boolean inItem = s.item_name != null && s.item_name.toLowerCase(java.util.Locale.ROOT).contains(kw);
                 boolean inMat = s.material != null && s.material.toLowerCase(java.util.Locale.ROOT).contains(kw);
                 boolean inOwner = s.owner_name != null && s.owner_name.toLowerCase(java.util.Locale.ROOT).contains(kw);
+                // 拼音 / 首字母搜索（蜘蛛 → zhizhu / zz）
+                if (!inItem && s.item_name != null) inItem = com.qshop.webui.util.Pinyin.matches(kw, s.item_name);
+                if (!inItem && s.shop_cn_name != null) inItem = com.qshop.webui.util.Pinyin.matches(kw, s.shop_cn_name);
                 if (!inItem && !inMat && !inOwner) continue;
             }
             results.add(s);
