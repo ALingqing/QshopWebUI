@@ -82,39 +82,6 @@ public final class AuthApi extends ApiBase {
     }
 
     // ============================================================
-    // POST /api/auth/player-login  玩家登录（AuthMe 密码验证）
-    // ============================================================
-
-    public HttpResponse playerLogin(HttpRequest req) {
-        JsonObject b = body(req);
-        String username = jstr(b, "username", "").trim();
-        String password = jstr(b, "password", "");
-        if (username.isEmpty() || password.isEmpty()) {
-            return HttpResponse.error(400, "请输入游戏 ID 和密码");
-        }
-        if (!username.matches("[A-Za-z0-9_]{1,16}")) {
-            return HttpResponse.error(400, "游戏 ID 格式不正确");
-        }
-        if (!plugin.authme().available()) {
-            return HttpResponse.error(503, "服务器未安装/未启用 AuthMe，无法使用游戏账号登录");
-        }
-        if (!plugin.authme().checkPassword(username, password)) {
-            return HttpResponse.error(401, "游戏 ID 或密码错误");
-        }
-        SessionManager.Session s = plugin.sessions().create(username, "player");
-        JsonObject o = obj();
-        put(o, "success", true);
-        put(o, "session_id", s.sessionId);
-        put(o, "player", username);
-        put(o, "role", "player");
-        put(o, "expires_in", plugin.config().sessionTimeout);
-        put(o, "balance", balanceOf(username));
-        put(o, "currency", plugin.economy().currencyName());
-        put(o, "pending_items", plugin.store().pendingCount(username));
-        return HttpResponse.json(o);
-    }
-
-    // ============================================================
     // /api/wallet  余额查询（GET ?player=xxx 或 POST {player}）
     // ============================================================
 
@@ -125,8 +92,7 @@ public final class AuthApi extends ApiBase {
             player = jstr(b, "player", "");
         }
         if (player == null || player.trim().isEmpty()) player = req.param("player", "");
-        String sessionPlayer = plugin.sessions().playerOf(req);
-        final String target = (sessionPlayer != null && !sessionPlayer.isEmpty()) ? sessionPlayer : player.trim();
+        final String target = player.trim();
         if (target.isEmpty()) return HttpResponse.error(400, "请提供玩家名");
         JsonObject o = obj();
         put(o, "success", true);

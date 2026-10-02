@@ -3,6 +3,7 @@ package cn.aqcraft.purchase;
 import com.google.gson.JsonObject;
 import cn.aqcraft.QShopWebUIPlugin;
 import cn.aqcraft.bridge.EconomyBridge;
+import cn.aqcraft.bridge.LimitedBridge;
 import cn.aqcraft.bridge.QuickShopBridge;
 import cn.aqcraft.data.ShopEntry;
 import cn.aqcraft.util.ItemCodec;
@@ -24,7 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 网页「在线购买」：
- * 玩家在游戏内必须在线 → 扣款 → 从商店箱子出实物货 → 直接进背包（溢出掉落脚下）→ 店主收款。
+ * 填游戏 ID 直接下单 → 扣款 → 从商店箱子出实物货。
+ * 玩家在线：物品直接进背包（溢出掉落脚下）；玩家离线：物品缓存，上线时自动发放（可在配置关闭）。
  */
 public final class PurchaseService {
 
@@ -35,11 +37,10 @@ public final class PurchaseService {
         this.plugin = plugin;
     }
 
-    public JsonObject purchase(String shopId, String playerName, int amount, String sessionPlayer, String password) {
+    public JsonObject purchase(String shopId, String playerName, int amount, String password) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
-        final boolean logged = sessionPlayer != null && !sessionPlayer.trim().isEmpty();
-        if (!logged && (playerName == null || playerName.trim().isEmpty())) return err("请输入你的游戏 ID（或先用游戏账号登录）");
-        final String name = logged ? sessionPlayer.trim() : playerName.trim();
+        if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
+        final String name = playerName.trim();
         int max = plugin.config().purchaseMaxAmount;
         final int amt = Math.max(1, Math.min(amount <= 0 ? 1 : amount, max));
 
@@ -49,13 +50,13 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
-        // 未登录：需要验证该玩家的游戏密码（AuthMe），防止冒用他人账号
-        if (!logged && plugin.authme().available()) {
+        // 安全验证：服务器安装 AuthMe 时，需验证该玩家的游戏密码（防止冒用他人账号）
+        if (plugin.authme().available()) {
             if (password == null || password.isEmpty()) {
-                return err("未登录状态下需要验证游戏密码（AuthMe 密码）");
+                return err("请输入游戏密码（AuthMe 验证身份）");
             }
             if (!plugin.authme().checkPassword(name, password)) {
-                return err("游戏密码验证失败（请输入该游戏账号的 AuthMe 密码）");
+                return err("游戏密码验证失败（请检查该账号的 AuthMe 密码）");
             }
         }
 
@@ -72,18 +73,17 @@ public final class PurchaseService {
 
         final ShopEntry entry = found;
         try {
-            return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt, logged));
+            return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt));
         } catch (Throwable t) {
             return err("交易执行失败: " + t.getMessage());
         }
     }
 
     /** 玩家出售给收购商店（网页收购界面） */
-    public JsonObject sell(String shopId, String playerName, int amount, String sessionPlayer, String password) {
+    public JsonObject sell(String shopId, String playerName, int amount, String password) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
-        final boolean logged = sessionPlayer != null && !sessionPlayer.trim().isEmpty();
-        if (!logged && (playerName == null || playerName.trim().isEmpty())) return err("请输入你的游戏 ID（或先用游戏账号登录）");
-        final String name = logged ? sessionPlayer.trim() : playerName.trim();
+        if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
+        final String name = playerName.trim();
         int max = plugin.config().purchaseMaxAmount;
         final int amt = Math.max(1, Math.min(amount <= 0 ? 1 : amount, max));
 
@@ -92,13 +92,13 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
-        // 未登录：需要验证该玩家的游戏密码（AuthMe），防止冒用他人账号
-        if (!logged && plugin.authme().available()) {
+        // 安全验证：服务器安装 AuthMe 时，需验证该玩家的游戏密码（防止冒用他人账号）
+        if (plugin.authme().available()) {
             if (password == null || password.isEmpty()) {
-                return err("未登录状态下需要验证游戏密码（AuthMe 密码）");
+                return err("请输入游戏密码（AuthMe 验证身份）");
             }
             if (!plugin.authme().checkPassword(name, password)) {
-                return err("游戏密码验证失败（请输入该游戏账号的 AuthMe 密码）");
+                return err("游戏密码验证失败（请检查该账号的 AuthMe 密码）");
             }
         }
 
@@ -122,10 +122,9 @@ public final class PurchaseService {
     }
 
     /** 查询在线玩家背包中该商店物品的数量（收购界面「最大」按钮用） */
-    public JsonObject inventoryCheck(String shopId, String playerName, String sessionPlayer) {
+    public JsonObject inventoryCheck(String shopId, String playerName) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
-        final boolean logged = sessionPlayer != null && !sessionPlayer.trim().isEmpty();
-        final String name = logged ? sessionPlayer.trim() : (playerName == null ? "" : playerName.trim());
+        final String name = playerName == null ? "" : playerName.trim();
         if (name.isEmpty()) return err("请输入你的游戏 ID");
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
@@ -165,16 +164,75 @@ public final class PurchaseService {
         }
     }
 
-    private JsonObject doPurchase(ShopEntry e, String name, int amount, boolean logged) {
+    /** 查询玩家在该商店的限购剩余额度（网页购买弹窗用） */
+    public JsonObject limitInfo(String shopId, String playerName) {
+        if (!plugin.limited().available()) {
+            JsonObject o = new JsonObject();
+            o.addProperty("success", true);
+            o.addProperty("available", false);
+            o.addProperty("limited", false);
+            return o;
+        }
+        if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
+        ShopEntry found = null;
+        for (ShopEntry s : plugin.shopData().shops()) {
+            if (shopId.trim().equals(s.shop_id)) {
+                found = s;
+                break;
+            }
+        }
+        if (found == null) return err("商店不存在或数据未同步");
+        final ShopEntry entry = found;
+        final String name = playerName == null ? "" : playerName.trim();
+        try {
+            return plugin.bridge().runOnMain(() -> {
+                JsonObject o = new JsonObject();
+                o.addProperty("success", true);
+                o.addProperty("available", true);
+                long id = parseLong(entry.shop_id);
+                Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
+                if (shop == null) {
+                    o.addProperty("limited", false);
+                    return o;
+                }
+                int limit = plugin.limited().limitOf(shop);
+                if (limit < 1) {
+                    o.addProperty("limited", false);
+                    return o;
+                }
+                String period = plugin.limited().periodOf(shop);
+                int used = 0;
+                boolean unknown = true;
+                if (!name.isEmpty()) {
+                    Player online = Bukkit.getPlayerExact(name);
+                    OfflinePlayer op = online != null ? online : resolvePlayer(name);
+                    if (op != null) {
+                        UUID pid = op.getUniqueId();
+                        if (pid != null) {
+                            used = plugin.limited().usedOf(shop, pid);
+                            unknown = false;
+                        }
+                    }
+                }
+                o.addProperty("limited", true);
+                o.addProperty("limit", limit);
+                o.addProperty("used", used);
+                o.addProperty("remaining", Math.max(0, limit - used));
+                o.addProperty("period", period);
+                o.addProperty("period_label", LimitedBridge.periodLabel(period));
+                o.addProperty("player_unknown", unknown);
+                return o;
+            });
+        } catch (Throwable t) {
+            return err("查询失败: " + t.getMessage());
+        }
+    }
+
+    private JsonObject doPurchase(ShopEntry e, String name, int amount) {
         Player buyer = Bukkit.getPlayerExact(name);
         boolean online = buyer != null && buyer.isOnline();
-        if (!online) {
-            if (!logged) {
-                return err("玩家 " + name + " 不在线（未登录玩家需要在线才能购买；用游戏账号登录后可离线购买）");
-            }
-            if (!plugin.config().allowOfflineBuy) {
-                return err("离线购买已被服务器关闭（config.yml purchase.allow-offline-buy）");
-            }
+        if (!online && !plugin.config().allowOfflineBuy) {
+            return err("玩家 " + name + " 不在线（离线购买已被服务器关闭：config.yml purchase.allow-offline-buy）");
         }
         EconomyBridge eco = plugin.economy();
         if (!eco.available()) return err("服务器未安装经济插件（需要 Vault 支持）");
@@ -205,6 +263,12 @@ public final class PurchaseService {
         OfflinePlayer payer = online ? buyer : resolvePlayer(name);
         if (payer == null) {
             return err("找不到玩家 " + name + " 的账户（需至少登录过一次服务器）");
+        }
+
+        // 限购（QuickShop「Limited」扩展）：与游戏内共用每人每周期额度
+        if (shop != null && plugin.limited().available()) {
+            String deny = plugin.limited().checkTrade(shop, payer.getUniqueId(), amount);
+            if (deny != null) return err(deny);
         }
 
         // 余额检查
@@ -264,6 +328,11 @@ public final class PurchaseService {
             trade.addProperty("owner", e.owner_name);
             trade.addProperty("online", online);
             plugin.store().addTrade(trade);
+
+            // 限购计数（+本次数量，与游戏内共用同一计数）
+            if (shop != null && plugin.limited().available()) {
+                plugin.limited().addUsed(shop, payer.getUniqueId(), amount);
+            }
 
             JsonObject o = new JsonObject();
             o.addProperty("success", true);

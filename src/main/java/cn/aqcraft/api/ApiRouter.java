@@ -180,11 +180,11 @@ public final class ApiRouter {
             case "/api/inventory-check":
                 return purchaseApi.inventoryCheck(req);
 
+            case "/api/limit":
+                return purchaseApi.limit(req);
+
             case "/api/wallet":
                 return authApi.wallet(req);
-
-            case "/api/auth/player-login":
-                return authApi.playerLogin(req);
 
             case "/api/pages":
                 return "GET".equalsIgnoreCase(m) ? metaApi.pagesGet(req) : metaApi.pagesSet(req);

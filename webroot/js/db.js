@@ -651,31 +651,6 @@
     }
   }
 
-  async function playerLogin(username, password) {
-    try {
-      const data = await apiCall('/auth/player-login', {
-        method: 'POST',
-        body: { username: String(username || '').trim(), password: String(password || '') }
-      });
-      if (!data.success) throw new Error(data.error || '登录失败');
-      authState.sessionId = data.session_id;
-      authState.username = data.player || username;
-      authState.role = 'player';
-      authState.expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
-      saveLocalSession();
-      return {
-        success: true,
-        session_id: data.session_id,
-        player: authState.username,
-        balance: data.balance,
-        currency: data.currency,
-        pending_items: data.pending_items
-      };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }
-
   async function getWallet(player) {
     try {
       const data = await apiCall('/wallet', { method: 'POST', body: { player: String(player || '') } });
@@ -688,6 +663,15 @@
   async function inventoryCheck(shopId, player) {
     try {
       const data = await apiCall('/inventory-check', { method: 'POST', body: { shop_id: String(shopId || ''), player: String(player || '') } });
+      return data || { success: false };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async function getLimit(shopId, player) {
+    try {
+      const data = await apiCall('/limit', { method: 'POST', body: { shop_id: String(shopId || ''), player: String(player || '') } });
       return data || { success: false };
     } catch (e) {
       return { success: false, error: e.message };
@@ -827,9 +811,9 @@
     getConfig: getConfig,
 
     login: login,
-    playerLogin: playerLogin,
     getWallet: getWallet,
     inventoryCheck: inventoryCheck,
+    getLimit: getLimit,
     logout: logout,
     register: registerUser,
     checkAuth: checkAuth,
@@ -1050,7 +1034,7 @@
       }
     },
 
-    // 网页「在线购买」：未登录需在线+游戏密码验证；登录后可离线购买
+    // 网页「在线购买」：填游戏 ID + 游戏密码（AuthMe 验证）购买
     purchaseShop: async function (shopId, player, amount, password) {
       try {
         const data = await apiCall('/purchase', {
@@ -1064,7 +1048,7 @@
       }
     },
 
-    // 网页「在线出售」（卖给收购商店）：未登录需在线+游戏密码验证
+    // 网页「在线出售」（卖给收购商店）：填游戏 ID + 游戏密码（AuthMe 验证）出售
     sellShop: async function (shopId, player, amount, password) {
       try {
         const data = await apiCall('/sell', {

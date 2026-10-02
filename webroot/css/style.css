@@ -79,6 +79,13 @@
   letter-spacing: 0.5px;
   margin-bottom: 4px;
 }
+
+.loader-title img {
+  width: 22px;
+  height: 22px;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
 .loader-subtitle {
   font-size: 13px;
   color: #6b7280;
@@ -1711,6 +1718,13 @@ input, select, textarea {
   white-space: nowrap;
 }
 
+.topnav-logo img {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
 .topnav-tabs {
   display: flex;
   gap: 8px;
@@ -2109,8 +2123,8 @@ input, select, textarea {
 
 .page-title {
   font-size: 22px;
-  font-weight: 800;
   color: #000;
+  font-weight: 800;
   margin: 0 0 4px;
   letter-spacing: 0.3px;
 }

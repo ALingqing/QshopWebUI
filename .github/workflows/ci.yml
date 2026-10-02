@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 构建与校验
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Maven 构建
+        run: mvn -B package
+
+      - name: 校验 JAR 内容
+        run: node tools/verify-jar.mjs
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: QShopWebUI-jar
+          path: target/QShopWebUI-*.jar
+          if-no-files-found: error

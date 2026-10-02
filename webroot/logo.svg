@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">QShopWebUI logo</title>
+  <desc id="desc">A pixel-inspired blue shop mark with a white Q</desc>
+  <rect width="512" height="512" rx="72" fill="#0f172a"/>
+  <path d="M104 174 256 88l152 86v174l-152 86-152-86z" fill="#38bdf8" stroke="#f8fafc" stroke-width="18" stroke-linejoin="round"/>
+  <path d="m104 174 152 86 152-86M256 260v174" fill="none" stroke="#f8fafc" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M270 164c-49 0-86 38-86 88s37 88 86 88c18 0 35-5 49-15l31 31 25-25-31-31c8-14 12-30 12-48 0-50-37-88-86-88zm0 36c28 0 49 22 49 52s-21 52-49 52-49-22-49-52 21-52 49-52z" fill="#0f172a"/>
+</svg>

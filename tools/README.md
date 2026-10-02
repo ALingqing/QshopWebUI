@@ -8,6 +8,10 @@
 - `test-pinyin-match.mjs`：验证拼音和首字母搜索结果。
 - `import-datapack-lang.mjs`：把数据包语言文件合并到自定义翻译资源。
 
+## 资源同步
+
+- `sync-item-images.mjs`：从 MC Item Gallery（mcitemgallery.com）的版本压缩包同步物品图片到 `webroot/item`。默认下载 26.2 压缩包并更新/补齐所有物品图；`--version=1.21.6` 换版本，`--missing` 只补缺失，`--zip-file=路径` 用本地压缩包，`--dry-run` 只统计。
+
 ## 构建与发布
 
 - `make-example-package.mjs`：生成网站自定义示例包。

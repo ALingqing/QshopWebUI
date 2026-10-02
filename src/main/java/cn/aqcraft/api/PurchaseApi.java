@@ -21,8 +21,7 @@ public final class PurchaseApi extends ApiBase {
         String player = jstr(b, "player", "");
         String password = jstr(b, "password", "");
         int amount = jint(b, "amount", 1);
-        String sessionPlayer = plugin.sessions().playerOf(req);
-        JsonObject result = plugin.purchases().purchase(shopId, player, amount, sessionPlayer, password);
+        JsonObject result = plugin.purchases().purchase(shopId, player, amount, password);
         return HttpResponse.json(result);
     }
 
@@ -35,8 +34,7 @@ public final class PurchaseApi extends ApiBase {
         String player = jstr(b, "player", "");
         String password = jstr(b, "password", "");
         int amount = jint(b, "amount", 1);
-        String sessionPlayer = plugin.sessions().playerOf(req);
-        JsonObject result = plugin.purchases().sell(shopId, player, amount, sessionPlayer, password);
+        JsonObject result = plugin.purchases().sell(shopId, player, amount, password);
         return HttpResponse.json(result);
     }
 
@@ -45,8 +43,16 @@ public final class PurchaseApi extends ApiBase {
         JsonObject b = body(req);
         String shopId = jstr(b, "shop_id", "");
         String player = jstr(b, "player", "");
-        String sessionPlayer = plugin.sessions().playerOf(req);
-        JsonObject result = plugin.purchases().inventoryCheck(shopId, player, sessionPlayer);
+        JsonObject result = plugin.purchases().inventoryCheck(shopId, player);
+        return HttpResponse.json(result);
+    }
+
+    /** POST /api/limit：查询该玩家在该商店的限购剩余额度（购买弹窗用） */
+    public HttpResponse limit(HttpRequest req) {
+        JsonObject b = body(req);
+        String shopId = jstr(b, "shop_id", "");
+        String player = jstr(b, "player", "");
+        JsonObject result = plugin.purchases().limitInfo(shopId, player);
         return HttpResponse.json(result);
     }
 }

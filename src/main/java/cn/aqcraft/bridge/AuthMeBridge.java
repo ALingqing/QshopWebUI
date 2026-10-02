@@ -27,7 +27,7 @@ public final class AuthMeBridge {
             Object inst = apiClass.getMethod("getInstance").invoke(null);
             if (inst != null) {
                 api = inst;
-                plugin.getLogger().info("[AuthMe] 已连接 AuthMe（玩家可用游戏账号登录网页）");
+                plugin.getLogger().info("[AuthMe] 已连接 AuthMe");
             }
         } catch (Throwable t) {
             plugin.getLogger().warning("[AuthMe] 初始化失败: " + t.getMessage());

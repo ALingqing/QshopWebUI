@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 构建并发行
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: 读取版本号
+        id: meta
+        run: |
+          raw="$(mvn -B help:evaluate -Dexpression=project.version -q -DforceStdout)"
+          version="$(printf '%s' "$raw" | tail -n1 | tr -d '[:space:]')"
+          if [ -z "$version" ]; then
+            echo "::error::无法从 pom.xml 读取版本号"
+            exit 1
+          fi
+          tag="v${version}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: 检查是否已发行
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 已存在则跳过
+        if: steps.check.outputs.exists == 'true'
+        run: echo "::notice::${{ steps.meta.outputs.tag }} 已存在，跳过构建与发行"
+
+      - name: Maven 构建
+        if: steps.check.outputs.exists == 'false'
+        run: mvn -B package
+
+      - name: 校验 JAR 内容
+        if: steps.check.outputs.exists == 'false'
+        run: node tools/verify-jar.mjs
+
+      - name: 创建 Release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: QShopWebUI ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: target/QShopWebUI-*.jar
+          generate_release_notes: true
+
+      - name: 写入摘要
+        run: |
+          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+            echo "版本 ${{ steps.meta.outputs.tag }} 已存在，本次跳过发行。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "已创建发行版本 ${{ steps.meta.outputs.tag }}，附件为本次构建的 JAR。" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -3,6 +3,7 @@ package cn.aqcraft;
 import cn.aqcraft.auth.SessionManager;
 import cn.aqcraft.bridge.AuthMeBridge;
 import cn.aqcraft.bridge.EconomyBridge;
+import cn.aqcraft.bridge.LimitedBridge;
 import cn.aqcraft.bridge.QuickShopBridge;
 import cn.aqcraft.data.RequestStats;
 import cn.aqcraft.data.ShopDataService;
@@ -17,12 +18,18 @@ import cn.aqcraft.util.Materials;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * QShopWebUI 主类。
@@ -30,7 +37,7 @@ import java.nio.file.Files;
  * <p>把商店网页系统作为单个 Paper 插件运行：直接读取 QuickShop-Hikari 数据，
  * 内嵌 Web 服务器；支持「单端口复用」（HTTP / Minecraft 流量自动分流）。</p>
  */
-public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecutor {
+public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecutor, TabCompleter {
 
     private PluginConfig config;
     private WebStore store;
@@ -42,6 +49,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private EconomyBridge economy;
     private PurchaseService purchases;
     private AuthMeBridge authme;
+    private LimitedBridge limited;
 
     // ============================================================
     // 生命周期
@@ -72,6 +80,8 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
         authme = new AuthMeBridge(this);
         authme.reload();
+        limited = new LimitedBridge(this);
+        limited.reload();
         getServer().getPluginManager().registerEvents(new PurchaseJoinListener(this), this);
         GameTradeListener.register(this);
         ShopRemovalListener.register(this);
@@ -97,6 +107,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
         if (getCommand("qshopwebui") != null) {
             getCommand("qshopwebui").setExecutor(this);
+            getCommand("qshopwebui").setTabCompleter(this);
         }
 
         getLogger().info("QShopWebUI 已启用 — " + bridge.getStatus());
@@ -212,6 +223,31 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         }
     }
 
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (!sender.hasPermission("qshopwebui.admin")) {
+            return Collections.emptyList();
+        }
+        if (args.length == 1) {
+            return partial(args[0], Arrays.asList("status", "reload", "port"));
+        }
+        if (args.length == 2 && "port".equalsIgnoreCase(args[0])) {
+            return partial(args[1], Collections.singletonList(String.valueOf(config.port)));
+        }
+        return Collections.emptyList();
+    }
+
+    private List<String> partial(String input, List<String> values) {
+        String prefix = input == null ? "" : input.toLowerCase(Locale.ROOT);
+        List<String> result = new ArrayList<>();
+        for (String value : values) {
+            if (value.toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                result.add(value);
+            }
+        }
+        return result;
+    }
+
     private void help(CommandSender sender) {
         sender.sendMessage("§6===== QShopWebUI =====");
         sender.sendMessage("§e/qshopwebui status §7- 查看运行状态");
@@ -230,6 +266,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         bridge.reload();
         economy.reload();
         if (authme != null) authme.reload();
+        if (limited != null) limited.reload();
         stopWeb();
         startWeb();
     }
@@ -298,6 +335,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public AuthMeBridge authme() {
         return authme;
+    }
+
+    public LimitedBridge limited() {
+        return limited;
     }
 
     /** 网页修改密码后刷新内存中的配置 */
