@@ -680,7 +680,7 @@ public final class WebStore {
         }
     }
 
-    /** 记录一家被移除的商店（同一商店 5 秒内重复事件自动合并） */
+    /** 记录一家被移除的商店（同一商店 5 秒内重复事件自动合并；位置优先匹配，兼容 POST 阶段字段变化） */
     public synchronized void addRemoval(JsonObject r) {
         if (r == null) return;
         long ts = tradeTs(r);
@@ -689,16 +689,24 @@ public final class WebStore {
                 + (r.has("x") ? r.get("x").getAsString() : "") + "|"
                 + (r.has("y") ? r.get("y").getAsString() : "") + "|"
                 + (r.has("z") ? r.get("z").getAsString() : "");
-        int from = Math.max(0, removals.size() - 20);
+        boolean hasPos = r.has("world") && !r.get("world").getAsString().isEmpty();
+        int from = Math.max(0, removals.size() - 50);
         for (int i = removals.size() - 1; i >= from; i--) {
             JsonObject o = removals.get(i);
             if (Math.abs(tradeTs(o) - ts) > 5000L) continue;
-            String oSid = o.has("shop_id") ? o.get("shop_id").getAsString() : "";
             String oPos = (o.has("world") ? o.get("world").getAsString() : "") + "|"
                     + (o.has("x") ? o.get("x").getAsString() : "") + "|"
                     + (o.has("y") ? o.get("y").getAsString() : "") + "|"
                     + (o.has("z") ? o.get("z").getAsString() : "");
-            if (sid.equals(oSid) && pos.equals(oPos)) return;
+            boolean oHasPos = o.has("world") && !o.get("world").getAsString().isEmpty();
+            if (hasPos && oHasPos) {
+                // 位置相同（且都有位置） → 同一次删除
+                if (pos.equals(oPos)) return;
+            } else {
+                // 无位置信息时回退到 shop_id 比较
+                String oSid = o.has("shop_id") ? o.get("shop_id").getAsString() : "";
+                if (sid.equals(oSid)) return;
+            }
         }
         removals.add(r);
         while (removals.size() > MAX_REMOVALS) removals.remove(0);
