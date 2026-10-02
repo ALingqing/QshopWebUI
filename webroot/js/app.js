@@ -2678,6 +2678,71 @@
     tradeCard.appendChild(tradeBtns);
     root.appendChild(tradeCard);
 
+    // --- 卡片: 商店批量清理 ---
+    const purgeCard = el('div', { class: 'admin-card' }, [
+      el('h3', { text: '🧹 商店批量清理' }),
+      el('p', { class: 'hint', text: '按玩家名查询其名下全部商店并一键删除。删除前会自动加载商店所在区块（修复"批量删除留下残留、删不掉"的问题），删除记录会写入「移除商店记录」。删除不可恢复，请谨慎操作。' })
+    ]);
+    const purgeRow = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginTop: '8px' } });
+    const purgeInput = el('input', { class: 'filter-input', placeholder: '玩家名（如 Jinx）', style: { maxWidth: '220px' } });
+    const purgeQueryBtn = el('button', { class: 'neo-btn', text: '查询其商店' });
+    purgeRow.appendChild(purgeInput);
+    purgeRow.appendChild(purgeQueryBtn);
+    purgeCard.appendChild(purgeRow);
+    const purgeInfo = el('div', { style: { marginTop: '10px', fontSize: '13px', lineHeight: '1.8' } });
+    purgeCard.appendChild(purgeInfo);
+    const purgeDelBtn = el('button', { class: 'neo-btn danger', text: '删除全部', style: { display: 'none', marginTop: '10px' } });
+    purgeCard.appendChild(purgeDelBtn);
+    root.appendChild(purgeCard);
+
+    let purgeIds = [];
+    let purgeOwner = '';
+    async function purgeQuery() {
+      const name = (purgeInput.value || '').trim();
+      if (!name) { Toast.show('请先输入玩家名', 'warning'); return; }
+      purgeInfo.textContent = '查询中...';
+      purgeDelBtn.style.display = 'none';
+      purgeIds = [];
+      const r = await QSDB.adminSearchShops({ owner: name, pageSize: 500 });
+      if (!r || !r.success) { purgeInfo.textContent = '查询失败: ' + ((r && r.error) || '需要管理员登录'); return; }
+      const list = r.shops || [];
+      const total = r.total || list.length;
+      if (!list.length) { purgeInfo.textContent = '没有找到该玩家名下的商店'; return; }
+      purgeIds = list.map(function (s) { return s.shop_id; });
+      purgeOwner = name;
+      purgeInfo.innerHTML = '';
+      purgeInfo.appendChild(el('div', {}, [
+        el('b', { text: '找到 ' + total + ' 家商店' }),
+        el('span', { class: 'muted-text', text: total > 500 ? '（一次最多处理 500 家，请分批执行）' : '' })
+      ]));
+      list.slice(0, 6).forEach(function (s) {
+        purgeInfo.appendChild(el('div', { class: 'muted-text', style: { fontSize: '12px' }, text: '· #' + s.shop_id + ' ' + (s.item_name || s.material || '?') + ' · ' + (s.shop_type === 'BUYING' ? '收购' : '出售') + ' · $' + s.price }));
+      });
+      if (list.length > 6) purgeInfo.appendChild(el('div', { class: 'muted-text', style: { fontSize: '12px' }, text: '…… 等共 ' + list.length + ' 家' }));
+      purgeDelBtn.textContent = '⚠️ 删除全部 ' + list.length + ' 家商店';
+      purgeDelBtn.style.display = '';
+    }
+    purgeQueryBtn.onclick = purgeQuery;
+    purgeDelBtn.onclick = function () {
+      if (!purgeIds.length) return;
+      Modal.confirm({
+        title: '删除商店（不可恢复）',
+        danger: true,
+        body: '<div>即将删除玩家 <b>' + purgeOwner + '</b> 名下的 <b>' + purgeIds.length + '</b> 家商店。</div><div class="hint" style="margin-top:6px">删除前自动加载各商店区块；此操作不可恢复。</div>',
+        confirmText: '确认删除',
+        onConfirm: async function () {
+          Toast.show('正在删除 ' + purgeIds.length + ' 家商店（自动加载区块）...', 'info');
+          const r = await QSDB.adminBatch(purgeIds, 'delete');
+          if (r && r.success) {
+            Toast.show('删除完成：成功 ' + (r.deleted_count || 0) + ' / ' + purgeIds.length + ' 家', 'success');
+            purgeQuery();
+          } else {
+            Toast.show('删除失败: ' + ((r && r.error) || '未知错误'), 'error');
+          }
+        }
+      });
+    };
+
     let tradesCache = [];
     const num2 = function (v) { const n = Number(v) || 0; return Math.round(n * 100) / 100; };
     const pad2 = function (n) { return (n < 10 ? '0' : '') + n; };

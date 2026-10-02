@@ -125,8 +125,9 @@ public final class HistoryImporter {
 
         // ---- 6) 逐行转换 ----
         List<JsonObject> batch = new ArrayList<>();
+        List<JsonObject> pendingTradeDeletes = new ArrayList<>(); // 交易日志中的删除记录（批量命令不写 ShopRemoveLog）
         long newMax = maxId;
-        int purchases = 0, skipped = 0;
+        int purchases = 0, skipped = 0, removalsSkipped = 0;
         long fromTs = Long.MAX_VALUE, toTs = 0;
         for (String[] row : rows) {
             if (row.length < 9) continue;
@@ -139,11 +140,24 @@ public final class HistoryImporter {
             if (id > newMax) newMax = id;
             String type = row[5] == null ? "" : row[5].trim();
             boolean purchase = type.startsWith("PURCHASE_");
+            boolean delete = "DELETE".equals(type);
             if (id <= maxId) {
                 if (purchase) skipped++;
+                if (delete) removalsSkipped++;
                 continue;
             }
-            if (!purchase) continue; // CREATE 等事件不计入交易
+            if (!purchase && !delete) continue; // CREATE 等事件不计入
+            if (delete) {
+                // 批量删除命令（如 /qs removeall）只写交易日志、不写 ShopRemoveLog，
+                // 这里把 DELETE 记录也转为"移除商店"记录（BUYER 列 = 操作者）
+                JsonObject r = new JsonObject();
+                r.addProperty("t", parseTime(row[1]));
+                r.addProperty("source", "history");
+                r.addProperty("player", cleanPlayer(row[4] == null ? "" : row[4].trim(), nameByUuid));
+                r.addProperty("reason", "商店删除（批量命令，编号 " + (row[2] == null ? "" : row[2].trim()) + "）");
+                pendingTradeDeletes.add(r);
+                continue;
+            }
             purchases++;
 
             boolean isBuy = type.contains("SELLING"); // PURCHASE_SELLING_SHOP=玩家买入；PURCHASE_BUYING_SHOP=玩家卖给收购店
@@ -218,7 +232,6 @@ public final class HistoryImporter {
         long removalsMaxId = readMaxId(REMOVALS_KEY);
         long newRemovalsMax = removalsMaxId;
         List<JsonObject> removalsBatch = new ArrayList<>();
-        int removalsSkipped = 0;
         if (!otherRows.isEmpty()) {
             String[] head = otherRows.get(0);
             int iId = idx(head, "ID"), iTime = idx(head, "TIME"), iType = idx(head, "TYPE"), iData = idx(head, "DATA");
@@ -308,6 +321,21 @@ public final class HistoryImporter {
                 }
             }
             removalsBatch.addAll(removalsList);
+        }
+
+        // ---- 7.6) 交易日志中的删除记录（批量命令不写 ShopRemoveLog）----
+        // 同一次删除若已由 ShopRemoveLog 记录（±5 秒内），跳过避免重复
+        for (JsonObject d : pendingTradeDeletes) {
+            long dt = d.has("t") ? d.get("t").getAsLong() : 0;
+            boolean dup = false;
+            for (JsonObject x : removalsBatch) {
+                long xt = x.has("t") ? x.get("t").getAsLong() : 0;
+                if (dt > 0 && xt > 0 && Math.abs(xt - dt) <= 5000L) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup) removalsBatch.add(d);
         }
         if (!removalsBatch.isEmpty()) {
             plugin.store().addRemovals(removalsBatch);

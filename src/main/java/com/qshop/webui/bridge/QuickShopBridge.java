@@ -215,6 +215,18 @@ public final class QuickShopBridge {
         if (!available || mDeleteShop == null) return "当前 QuickShop 版本不支持删除操作";
         try {
             runOnMain(() -> {
+                // 删除前先同步加载商店所在区块：
+                // 未加载区块的商店在批量删除时会被 QuickShop 跳过（"删不掉"的根因）
+                try {
+                    Object loc = unwrap(call(shop, "getLocation"));
+                    if (loc instanceof org.bukkit.Location) {
+                        org.bukkit.Location l = (org.bukkit.Location) loc;
+                        if (l.getWorld() != null && !l.getWorld().isChunkLoaded(l.getBlockX() >> 4, l.getBlockZ() >> 4)) {
+                            l.getWorld().getChunkAt(l); // 主线程同步加载
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
                 mDeleteShop.invoke(shopManager, shop);
                 return null;
             });
