@@ -144,23 +144,40 @@ mvn package
 - 依赖：`spigot-api 1.17.1`（provided），编译期仅用基础 Bukkit API
 - QuickShop-Hikari 通过**反射**调用，无需编译依赖
 
-### 目录结构
+### 仓库结构
 
 ```
-paper-plugin/
+QshopWebUI/
 ├── pom.xml
-├── src/main/java/com/qshop/webui/
-│   ├── QShopWebUIPlugin.java      # 主类
+├── README.md
+├── src/main/java/cn/aqcraft/
+│   ├── QShopWebUIPlugin.java       # 插件入口与生命周期
 │   ├── PluginConfig.java
-│   ├── bridge/QuickShopBridge.java # QuickShop 反射桥（读数据 + 改价/删除）
-│   ├── data/                       # 快照 / 查询 / 持久化（settings/公告/备份…）
-│   ├── http/                       # 手写 HTTP + 端口嗅探 + MC 转发
-│   └── api/                        # 全部 REST API
+│   ├── api/                         # REST API 路由与处理器
+│   ├── auth/                        # 管理后台认证与会话
+│   ├── bridge/                      # QuickShop、Vault、AuthMe 反射桥
+│   ├── data/                        # 商店快照、查询、统计与持久化
+│   ├── history/                     # 历史数据导入
+│   ├── http/                        # HTTP 服务、端口嗅探与 MC 转发
+│   ├── listener/                    # Bukkit 与 QuickShop 事件监听
+│   ├── purchase/                    # 网页购买流程
+│   └── util/                        # JSON、物品和拼音工具
 ├── src/main/resources/
-│   ├── plugin.yml / config.yml
-│   └── material_zh_cn.json         # 物品中文名表（由官方语言文件生成）
-└── webroot/                        # Web 前端（打包进 jar）
+│   ├── plugin.yml / config.yml      # 插件元数据与默认配置
+│   ├── material_zh_cn.json          # 物品中文名表
+│   └── item/                        # 内置物品图片
+├── webroot/                         # 原生 HTML/CSS/JS 前端，打包到 jar:/web
+├── tools/                           # 数据生成、排障和验证脚本
+│   └── README.md                    # 工具分类与运行约定
+└── target/                          # Maven 构建产物，不提交 Git
 ```
+
+### 开发说明
+
+- Java 源码和插件资源放在 `src/main/`，网页源码放在 `webroot/`；执行 `mvn package` 时两者会合并进同一个 jar。
+- `tools/` 中的 Node.js 辅助脚本不参与正式构建，具体用途见 `tools/README.md`。
+- `target/`、本地依赖 jar、日志和 IDE 配置均由 `.gitignore` 排除。
+- 修改网页后无需额外打包工具链，重新执行 Maven 构建即可更新 jar 内的 `/web` 资源。
 
 ---
 

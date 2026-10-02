@@ -1,15 +1,16 @@
 # 构建产物
 target/
 *.class
+*.jar
+*.war
 
 # 临时文件
 qs-export-tmp/
-
-# 数据库分析工具（大文件不入库）
-tools/h2/*.mv.db
-tools/h2/*.jar
-tools/h2/*.class
-tools/h2/*.txt
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
 
 # IDE
 .idea/
@@ -17,6 +18,9 @@ tools/h2/*.txt
 .vscode/
 *.code-workspace
 *.swp
+.classpath
+.project
+.settings/
 
 # 系统
 .DS_Store
@@ -24,4 +28,3 @@ Thumbs.db
 
 # 日志
 *.log
-tools/h2/*.trace.db
