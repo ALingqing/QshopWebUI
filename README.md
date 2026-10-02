@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/ALingqing/QshopWebUI/main/webroot/logo.svg" width="112" alt="QShopWebUI Logo">
+  <img src="webroot/logo.svg" width="112" alt="QShopWebUI Logo">
   <h1>QShopWebUI</h1>
   <p>QuickShop-Hikari 商店网页管理系统</p>
   <p>
