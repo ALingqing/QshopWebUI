@@ -20,6 +20,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Web 侧小型数据存储（插件数据目录下的 JSON 文件）：
@@ -57,6 +61,15 @@ public final class WebStore {
     /** 被移除（删除）的商店记录：最近 MAX_REMOVALS 条 */
     private final List<JsonObject> removals = new ArrayList<>();
     private static final int MAX_REMOVALS = 20000;
+
+    /** 写盘节流：批量场景（如一次删除上百家商店）合并为一次写盘，避免连续 IO 卡顿 */
+    private final ScheduledExecutorService saveExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "QShopWebUI-Save");
+        t.setDaemon(true);
+        return t;
+    });
+    private final AtomicBoolean tradesSavePending = new AtomicBoolean();
+    private final AtomicBoolean removalsSavePending = new AtomicBoolean();
 
     public WebStore(QShopWebUIPlugin plugin, File dataFolder) {
         this.plugin = plugin;
@@ -613,7 +626,7 @@ public final class WebStore {
         while (idx > 0 && tradeTs(trades.get(idx - 1)) > ts) idx--;
         trades.add(idx, t);
         while (trades.size() > MAX_TRADES) trades.remove(0);
-        saveTrades();
+        scheduleSaveTrades();
     }
 
     /** 批量记录交易（历史导入用，只写盘一次） */
@@ -689,7 +702,7 @@ public final class WebStore {
         }
         removals.add(r);
         while (removals.size() > MAX_REMOVALS) removals.remove(0);
-        saveRemovals();
+        scheduleSaveRemovals();
     }
 
     /** 批量记录被移除的商店（历史导入用） */
@@ -712,6 +725,43 @@ public final class WebStore {
             for (JsonObject r : removals) arr.add(r);
         }
         writeJson("removals.json", arr);
+    }
+
+    /** 延迟合并写盘：2 秒内的多次变更只写一次（防批量操作时连续 IO） */
+    private void scheduleSaveTrades() {
+        if (!tradesSavePending.compareAndSet(false, true)) return;
+        saveExecutor.schedule(() -> {
+            try {
+                saveTrades();
+            } catch (Throwable ignored) {
+            } finally {
+                tradesSavePending.set(false);
+            }
+        }, 2, TimeUnit.SECONDS);
+    }
+
+    private void scheduleSaveRemovals() {
+        if (!removalsSavePending.compareAndSet(false, true)) return;
+        saveExecutor.schedule(() -> {
+            try {
+                saveRemovals();
+            } catch (Throwable ignored) {
+            } finally {
+                removalsSavePending.set(false);
+            }
+        }, 2, TimeUnit.SECONDS);
+    }
+
+    /** 立即写出交易与移除记录（插件停用时调用，防止节流窗口丢数据） */
+    public void flushSaves() {
+        try {
+            saveTrades();
+        } catch (Throwable ignored) {
+        }
+        try {
+            saveRemovals();
+        } catch (Throwable ignored) {
+        }
     }
 
     // ============================================================

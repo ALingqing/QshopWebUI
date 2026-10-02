@@ -110,6 +110,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
                 store.flushActivity();
             } catch (Throwable ignored) {
             }
+            try {
+                store.flushSaves();
+            } catch (Throwable ignored) {
+            }
         }
         getLogger().info("QShopWebUI 已停用");
     }

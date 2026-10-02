@@ -59,6 +59,13 @@ public final class ShopRemovalListener implements Listener {
 
     private void onDelete(Event event) {
         try {
+            // ShopDeleteEvent 是分阶段事件：PRE / PRE_CANCELLABLE（删除前，可能被取消）、
+            // POST（删除完成）。只在 POST 阶段记录，避免重复记录和误记被取消的删除。
+            Object phaseObj = QuickShopBridge.call(event, "getPhase");
+            if (phaseObj != null && String.valueOf(QuickShopBridge.unwrap(phaseObj)).contains("PRE")) {
+                return;
+            }
+
             Object shop = QuickShopBridge.call(event, "getShop");
             if (shop == null) return;
 
