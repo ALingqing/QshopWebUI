@@ -14,6 +14,24 @@ import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
 
+// 解压 zip：Windows 的 tar 是 bsdtar（支持 zip）；
+// Linux/macOS 的 tar 是 GNU tar（不支持 zip），改用 unzip。
+function extractZip(archive, dest) {
+  const commands = process.platform === 'win32'
+    ? [`tar -xf "${archive}" -C "${dest}"`]
+    : [`unzip -q -o "${archive}" -d "${dest}"`, `tar -xf "${archive}" -C "${dest}"`];
+  let lastError;
+  for (const cmd of commands) {
+    try {
+      execSync(cmd, { stdio: 'pipe' });
+      return;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
 const root = path.resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
 const has = (name) => args.includes('--' + name);
@@ -55,7 +73,7 @@ console.log('压缩包：' + zipPath + '（' + (fs.statSync(zipPath).size / 1024
 const out = path.join(os.tmpdir(), 'mcitemgallery-' + version);
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
-execSync(`tar -xf "${zipPath}" -C "${out}"`);
+extractZip(zipPath, out);
 
 // 3) 在解压结果里找到包含 png 的目录
 let pngRoot = out;

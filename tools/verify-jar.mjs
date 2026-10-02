@@ -4,6 +4,24 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+// 解压 zip：Windows 的 tar 是 bsdtar（支持 zip）；
+// Linux/macOS 的 tar 是 GNU tar（不支持 zip），改用 unzip。
+function extractZip(archive, dest) {
+  const commands = process.platform === 'win32'
+    ? [`tar -xf "${archive}" -C "${dest}"`]
+    : [`unzip -q -o "${archive}" -d "${dest}"`, `tar -xf "${archive}" -C "${dest}"`];
+  let lastError;
+  for (const cmd of commands) {
+    try {
+      execSync(cmd, { stdio: 'pipe' });
+      return;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
 const root = path.resolve(import.meta.dirname, '..');
 const targetDir = path.join(root, 'target');
 const pickJar = () => {
@@ -22,7 +40,7 @@ const jar = pickJar();
 const tmp = path.join(os.tmpdir(), 'qsw-jar-check');
 fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(tmp, { recursive: true });
-execSync(`tar -xf "${jar}" -C "${tmp}"`);
+extractZip(jar, tmp);
 
 const walk = (d, acc = []) => {
   for (const f of fs.readdirSync(d)) {
