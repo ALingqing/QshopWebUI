@@ -24,6 +24,16 @@ public final class ShopDataService {
     private volatile ShopStats stats = new ShopStats();
     private final java.util.Deque<com.google.gson.JsonObject> syncHistory = new java.util.ArrayDeque<>();
 
+    // ---- 事件驱动刷新（QuickShop 数据变更 → 尾部防抖自动刷新快照）----
+    private final java.util.concurrent.ScheduledExecutorService refreshExec =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "QShopWebUI-Snapshot");
+                t.setDaemon(true);
+                return t;
+            });
+    private final java.util.concurrent.atomic.AtomicLong lastShopEventAt = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicBoolean refreshLoopActive = new java.util.concurrent.atomic.AtomicBoolean();
+
     public ShopDataService(QShopWebUIPlugin plugin, QuickShopBridge bridge) {
         this.plugin = plugin;
         this.bridge = bridge;
@@ -54,6 +64,40 @@ public final class ShopDataService {
     /** 使快照过期（下次请求时重建） */
     public void invalidate() {
         this.snapshotAt = 0;
+    }
+
+    // ============================================================
+    // 事件驱动刷新（ShopDataListener → 商店变更 → 自动刷新快照）
+    // ============================================================
+
+    /** QuickShop 商店数据发生变化（创建/删除/改价/库存等）→ 稍后自动刷新快照 */
+    public void onShopChanged() {
+        lastShopEventAt.set(System.currentTimeMillis());
+        if (refreshLoopActive.compareAndSet(false, true)) {
+            refreshExec.schedule(this::debounceTick, 1000L, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void debounceTick() {
+        try {
+            long now = System.currentTimeMillis();
+            // 事件仍在持续（如批量删除）→ 继续等待，合并为一轮刷新
+            if (now - lastShopEventAt.get() < 1500L) {
+                refreshExec.schedule(this::debounceTick, 800L, java.util.concurrent.TimeUnit.MILLISECONDS);
+                return;
+            }
+            // 距上次实际刷新太近 → 稍后补一轮（防止高频全量刷新）
+            long sinceRefresh = now - snapshotAt;
+            if (sinceRefresh < 3000L) {
+                refreshExec.schedule(this::debounceTick, 3000L - sinceRefresh + 100L,
+                        java.util.concurrent.TimeUnit.MILLISECONDS);
+                return;
+            }
+            refreshLoopActive.set(false);
+            refresh();
+        } catch (Throwable t) {
+            refreshLoopActive.set(false);
+        }
     }
 
     private void refreshLocked() {

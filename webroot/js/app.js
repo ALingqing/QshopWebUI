@@ -2614,6 +2614,17 @@
     } catch (e) {}
 
     doSearch(true);
+
+    // 实时数据：每 15 秒自动刷新（仅当无搜索/无筛选、停留第一页、未向下浏览时，避免打扰操作）
+    const autoTimer = setInterval(function () {
+      if (!grid.isConnected) { clearInterval(autoTimer); return; } // 页面已切换 → 自动停止
+      if (loading || page !== 1) return;
+      if ((searchInput.value || '').trim()) return;
+      if (matSelect.value) return;
+      if (sortSelect.value && sortSelect.value !== 'relevance') return;
+      if (window.scrollY > 400) return;
+      doSearch(true);
+    }, 15000);
   }
 
   //  数据管理: 生成测试数据 / 清空 / 强制终止

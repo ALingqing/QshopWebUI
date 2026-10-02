@@ -9,8 +9,9 @@
     lastUpdate: 0
   };
 
-  // 对 GET 请求的响应做 30 秒缓存，大幅减少网络往返和页面切换卡顿
-  const apiTTL = 30 * 1000; // 30 秒
+  // 对 GET 请求的响应做 5 秒短缓存（与后端快照 TTL 对齐，保证数据秒级实时）；
+  // 写操作（购买/删除/改价等）后由调用方使用 cacheClear() 立即失效
+  const apiTTL = 5 * 1000; // 5 秒
   const apiCache = new Map(); // key -> { data, timestamp }
   const apiCacheMax = 60;
 
@@ -388,6 +389,7 @@
     try {
       const data = await apiCall('/shops/' + encodeURIComponent(id), { method: 'DELETE' });
       if (!data.success) throw new Error(data.error || '删除失败');
+      cacheClear();
       memoryCache.lastUpdate = 0;
       return { success: true, deleted: data.deleted };
     } catch (err) {
@@ -969,6 +971,7 @@
       try {
         const body = Object.assign({ ids: ids || [], action: action || 'delete' }, extra || {});
         const data = await apiCall('/admin/shops/batch', { method: 'POST', body: body });
+        if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false };
       } catch (e) {
         return { success: false, error: e.message };
@@ -1054,6 +1057,7 @@
           method: 'POST',
           body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
         });
+        if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false, error: '服务器无响应' };
       } catch (e) {
         return { success: false, error: e.message };
@@ -1067,6 +1071,7 @@
           method: 'POST',
           body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
         });
+        if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false, error: '服务器无响应' };
       } catch (e) {
         return { success: false, error: e.message };
