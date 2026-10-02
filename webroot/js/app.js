@@ -2754,6 +2754,98 @@
       });
     };
 
+    // --- 卡片: 移除商店记录（表格） ---
+    const remCard = el('div', { class: 'admin-card' }, [
+      el('h3', { text: '📋 移除商店记录' }),
+      el('p', { class: 'hint', text: '所有删除的商店都会记录在这里：游戏内删除（含 /qs removeall 批量命令）、WorldEdit/方块破坏、网页后台删除。点「导入 QuickShop 历史交易」可找回历史删除记录。' })
+    ]);
+    const remBar = el('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', margin: '8px 0' } });
+    const remInfo = el('span', { style: { fontSize: '13px', fontWeight: '600' } });
+    const remRefreshBtn = el('button', { class: 'neo-btn', text: '🔄 刷新' });
+    const remExportBtn = el('button', { class: 'neo-btn', text: '导出 CSV' });
+    remBar.appendChild(remInfo);
+    remBar.appendChild(remRefreshBtn);
+    remBar.appendChild(remExportBtn);
+    remCard.appendChild(remBar);
+    const remTableWrap = el('div', { style: { overflowX: 'auto' } });
+    remCard.appendChild(remTableWrap);
+    const remPager = el('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', fontSize: '13px' } });
+    const remPrev = el('button', { class: 'neo-btn', text: '← 上一页' });
+    const remNext = el('button', { class: 'neo-btn', text: '下一页 →' });
+    const remPageInfo = el('span', {});
+    remPager.appendChild(remPrev);
+    remPager.appendChild(remNext);
+    remPager.appendChild(remPageInfo);
+    remCard.appendChild(remPager);
+    root.appendChild(remCard);
+
+    let remData = [];
+    let remPage = 1;
+    const remPageSize = 50;
+    function remFmtTime(ms) {
+      const d = new Date(Number(ms) || 0);
+      const p = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    function remCell(value) {
+      const s = value == null || value === '' ? '—' : String(value);
+      return el('td', { style: { border: '1px solid #000', padding: '5px 8px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, [
+        el('span', { text: s, title: s })
+      ]);
+    }
+    function remRender() {
+      remTableWrap.innerHTML = '';
+      if (!remData.length) {
+        remTableWrap.appendChild(el('div', { class: 'muted-text', style: { padding: '12px 0', fontSize: '13px' }, text: '暂无移除记录。（新的删除会实时记录；历史删除可点「导入 QuickShop 历史交易」找回）' }));
+        remInfo.textContent = '共 0 条';
+        remPageInfo.textContent = '';
+        return;
+      }
+      const pages = Math.max(1, Math.ceil(remData.length / remPageSize));
+      if (remPage > pages) remPage = pages;
+      const start = (remPage - 1) * remPageSize;
+      const rows = remData.slice(start, start + remPageSize);
+      const tbl = el('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' } });
+      const thead = el('thead', {});
+      const htr = el('tr', {});
+      ['时间', '来源', '操作者', '原因', '店主', '物品', '位置'].forEach(function (h) {
+        htr.appendChild(el('th', { style: { border: '2px solid #000', padding: '6px 8px', background: '#fef08a', textAlign: 'left', whiteSpace: 'nowrap' }, text: h }));
+      });
+      thead.appendChild(htr);
+      tbl.appendChild(thead);
+      const tbody = el('tbody', {});
+      rows.forEach(function (x) {
+        const tr = el('tr', {});
+        tr.appendChild(remCell(remFmtTime(x.t)));
+        tr.appendChild(remCell(x.source === 'history' ? '历史导入' : '实时记录'));
+        tr.appendChild(remCell(x.player || ''));
+        tr.appendChild(remCell(x.reason || ''));
+        tr.appendChild(remCell(x.owner || ''));
+        tr.appendChild(remCell(x.item || ''));
+        tr.appendChild(remCell(x.world ? (x.world + ' ' + x.x + ',' + x.y + ',' + x.z) : ''));
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      remTableWrap.appendChild(tbl);
+      remInfo.textContent = '共 ' + remData.length + ' 条记录';
+      remPageInfo.textContent = '第 ' + remPage + ' / ' + pages + ' 页';
+      remPrev.disabled = remPage <= 1;
+      remNext.disabled = remPage >= pages;
+    }
+    async function remLoad() {
+      remInfo.textContent = '加载中...';
+      const r = await QSDB.getShopRemovals();
+      if (!r || !r.success) { remInfo.textContent = '加载失败: ' + ((r && r.error) || '需要管理员登录'); return; }
+      remData = r.removals || [];
+      remPage = 1;
+      remRender();
+    }
+    remRefreshBtn.onclick = remLoad;
+    remExportBtn.onclick = function () { exportShopRemovalsCsv(); };
+    remPrev.onclick = function () { if (remPage > 1) { remPage--; remRender(); } };
+    remNext.onclick = function () { if (remPage < Math.ceil(remData.length / remPageSize)) { remPage++; remRender(); } };
+    remLoad();
+
     let tradesCache = [];
     const num2 = function (v) { const n = Number(v) || 0; return Math.round(n * 100) / 100; };
     const pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
