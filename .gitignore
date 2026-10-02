@@ -5,6 +5,12 @@ target/
 # 临时文件
 qs-export-tmp/
 
+# 数据库分析工具（大文件不入库）
+tools/h2/*.mv.db
+tools/h2/*.jar
+tools/h2/*.class
+tools/h2/*.txt
+
 # IDE
 .idea/
 *.iml
@@ -18,3 +24,4 @@ Thumbs.db
 
 # 日志
 *.log
+tools/h2/*.trace.db

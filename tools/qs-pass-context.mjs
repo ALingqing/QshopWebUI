@@ -1,0 +1,10 @@
+import { execSync } from 'child_process';
+const jar = 'G:/p/plugins/QuickShop-Hikari-6.3.0.0-SNAPSHOT-4.jar';
+const buf = execSync('tar -xOf "' + jar + '" com/ghostchu/quickshop/QuickShop.class', { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+const txt = buf.toString('latin1');
+const strings = txt.match(/[ -~]{1,200}/g) || [];
+const uniq = [...new Set(strings)];
+const idx = uniq.findIndex(s => s === 'pass');
+console.log('pass 在字符串池中的位置:', idx, '/', uniq.length);
+console.log('\n=== pass 前后 40 条 ===');
+console.log(uniq.slice(Math.max(0, idx - 40), idx + 40).join('\n'));
