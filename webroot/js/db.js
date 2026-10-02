@@ -1108,6 +1108,26 @@
       } catch (e) {
         return { success: false, error: e.message };
       }
+    },
+    // 全部玩家余额（导出玩家钱数，管理员）
+    getBalances: async function () {
+      try {
+        cacheClear();
+        const data = await apiCall('/admin/balances', { method: 'GET' });
+        return data || { success: false, players: [] };
+      } catch (e) {
+        return { success: false, players: [], error: e.message };
+      }
+    },
+    // 移除（删除）的商店记录（管理员）
+    getShopRemovals: async function () {
+      try {
+        cacheClear();
+        const data = await apiCall('/admin/shops/removals', { method: 'GET' });
+        return data || { success: false, removals: [] };
+      } catch (e) {
+        return { success: false, removals: [], error: e.message };
+      }
     }
   };
 

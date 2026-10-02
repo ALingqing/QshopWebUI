@@ -10,6 +10,7 @@ import com.qshop.webui.data.WebStore;
 import com.qshop.webui.http.WebServer;
 import com.qshop.webui.listener.GameTradeListener;
 import com.qshop.webui.listener.PurchaseJoinListener;
+import com.qshop.webui.listener.ShopRemovalListener;
 import com.qshop.webui.purchase.PurchaseService;
 import com.qshop.webui.util.Materials;
 import org.bukkit.command.Command;
@@ -72,6 +73,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         authme.reload();
         getServer().getPluginManager().registerEvents(new PurchaseJoinListener(this), this);
         GameTradeListener.register(this);
+        ShopRemovalListener.register(this);
 
         shopData = new ShopDataService(this, bridge);
         sessions = new SessionManager(this);

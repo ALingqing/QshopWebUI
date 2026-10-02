@@ -54,6 +54,9 @@ public final class WebStore {
     /** 交易记录（购买/收购）：最近 MAX_TRADES 条 */
     private final List<JsonObject> trades = new ArrayList<>();
     private static final int MAX_TRADES = 10000;
+    /** 被移除（删除）的商店记录：最近 MAX_REMOVALS 条 */
+    private final List<JsonObject> removals = new ArrayList<>();
+    private static final int MAX_REMOVALS = 20000;
 
     public WebStore(QShopWebUIPlugin plugin, File dataFolder) {
         this.plugin = plugin;
@@ -76,6 +79,7 @@ public final class WebStore {
         loadUsers();
         loadPending();
         loadTrades();
+        loadRemovals();
     }
 
     private JsonElement readJson(String name) {
@@ -648,6 +652,69 @@ public final class WebStore {
     }
 
     // ============================================================
+    // 移除（删除）商店记录
+    // ============================================================
+
+    private void loadRemovals() {
+        try {
+            JsonElement el = readJson("removals.json");
+            if (el == null || !el.isJsonArray()) return;
+            for (JsonElement item : el.getAsJsonArray()) {
+                if (item.isJsonObject()) removals.add(item.getAsJsonObject());
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Store] 读取 removals.json 失败: " + e.getMessage());
+        }
+    }
+
+    /** 记录一家被移除的商店（同一商店 5 秒内重复事件自动合并） */
+    public synchronized void addRemoval(JsonObject r) {
+        if (r == null) return;
+        long ts = tradeTs(r);
+        String sid = r.has("shop_id") ? r.get("shop_id").getAsString() : "";
+        String pos = (r.has("world") ? r.get("world").getAsString() : "") + "|"
+                + (r.has("x") ? r.get("x").getAsString() : "") + "|"
+                + (r.has("y") ? r.get("y").getAsString() : "") + "|"
+                + (r.has("z") ? r.get("z").getAsString() : "");
+        int from = Math.max(0, removals.size() - 20);
+        for (int i = removals.size() - 1; i >= from; i--) {
+            JsonObject o = removals.get(i);
+            if (Math.abs(tradeTs(o) - ts) > 5000L) continue;
+            String oSid = o.has("shop_id") ? o.get("shop_id").getAsString() : "";
+            String oPos = (o.has("world") ? o.get("world").getAsString() : "") + "|"
+                    + (o.has("x") ? o.get("x").getAsString() : "") + "|"
+                    + (o.has("y") ? o.get("y").getAsString() : "") + "|"
+                    + (o.has("z") ? o.get("z").getAsString() : "");
+            if (sid.equals(oSid) && pos.equals(oPos)) return;
+        }
+        removals.add(r);
+        while (removals.size() > MAX_REMOVALS) removals.remove(0);
+        saveRemovals();
+    }
+
+    /** 批量记录被移除的商店（历史导入用） */
+    public synchronized void addRemovals(List<JsonObject> list) {
+        if (list == null || list.isEmpty()) return;
+        removals.addAll(list);
+        removals.sort(Comparator.comparingLong(WebStore::tradeTs));
+        while (removals.size() > MAX_REMOVALS) removals.remove(0);
+        saveRemovals();
+    }
+
+    /** 全部移除记录快照（按时间正序） */
+    public synchronized List<JsonObject> removalsSnapshot() {
+        return new ArrayList<>(removals);
+    }
+
+    public void saveRemovals() {
+        JsonArray arr = new JsonArray();
+        synchronized (this) {
+            for (JsonObject r : removals) arr.add(r);
+        }
+        writeJson("removals.json", arr);
+    }
+
+    // ============================================================
     // 备份导出 / 恢复
     // ============================================================
 
@@ -687,6 +754,11 @@ public final class WebStore {
             for (JsonObject t : trades) tradesArr.add(t.deepCopy());
         }
         o.add("trades", tradesArr);
+        JsonArray removalsArr = new JsonArray();
+        synchronized (this) {
+            for (JsonObject r : removals) removalsArr.add(r.deepCopy());
+        }
+        o.add("removals", removalsArr);
         return o;
     }
 

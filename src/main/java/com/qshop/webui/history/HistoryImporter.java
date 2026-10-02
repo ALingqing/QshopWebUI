@@ -1,9 +1,11 @@
 package com.qshop.webui.history;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.qshop.webui.QShopWebUIPlugin;
 import com.qshop.webui.data.ShopEntry;
+import com.qshop.webui.util.Materials;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
@@ -17,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,6 +46,7 @@ public final class HistoryImporter {
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[.SSS]");
     private static final String SETTING_KEY = "history_import_max_id";
+    private static final String REMOVALS_KEY = "removals_import_max_id";
 
     /** 匹配 ItemStack YAML 中的 id 行（行首缩进 + id: material） */
     private static final Pattern ITEM_ID = Pattern.compile("(?m)^[ \\t]*id:[ \\t]*([^\\s]+)");
@@ -97,6 +101,7 @@ public final class HistoryImporter {
         Map<String, String> nameByUuid = new HashMap<>();   // uuid -> 玩家名
         Map<Integer, ShopRef> refById = new HashMap<>();    // shop id -> 物品引用
         List<String[]> rows;
+        List<String[]> otherRows = new ArrayList<>();
         try (ZipFile zf = new ZipFile(zip)) {
             String playersCsv = readEntry(zf, "players.csv");
             if (playersCsv != null) parsePlayers(playersCsv, nameByUuid);
@@ -105,10 +110,12 @@ public final class HistoryImporter {
             String logCsv = readEntry(zf, "log_purchase.csv");
             if (logCsv == null) return fail("导出包中缺少 log_purchase.csv（QuickShop 交易流水）");
             rows = parseCsv(logCsv);
+            String othersCsv = readEntry(zf, "log_others.csv");
+            if (othersCsv != null) otherRows = parseCsv(othersCsv);
         }
 
         // ---- 4) 已导入进度 ----
-        long maxId = readMaxId();
+        long maxId = readMaxId(SETTING_KEY);
 
         // ---- 5) 当前商店快照（补充物品显示名 / 店主名 / 每份数量） ----
         Map<String, ShopEntry> snap = new HashMap<>();
@@ -207,6 +214,108 @@ public final class HistoryImporter {
             plugin.store().setSetting(SETTING_KEY, new JsonPrimitive(newMax), "number");
         }
 
+        // ---- 7.5) 移除商店记录（log_others.csv 的 ShopRemoveLog） ----
+        long removalsMaxId = readMaxId(REMOVALS_KEY);
+        long newRemovalsMax = removalsMaxId;
+        List<JsonObject> removalsBatch = new ArrayList<>();
+        int removalsSkipped = 0;
+        if (!otherRows.isEmpty()) {
+            String[] head = otherRows.get(0);
+            int iId = idx(head, "ID"), iTime = idx(head, "TIME"), iType = idx(head, "TYPE"), iData = idx(head, "DATA");
+            List<JsonObject> removalsList = new ArrayList<>();
+            Map<String, JsonObject> lastByPos = new HashMap<>();
+            for (int i = 1; i < otherRows.size(); i++) {
+                String[] r = otherRows.get(i);
+                if (r.length <= Math.max(iData, Math.max(iId, iTime))) continue;
+                long id;
+                try {
+                    id = Long.parseLong(r[iId].trim());
+                } catch (Exception e) {
+                    continue;
+                }
+                if (id > newRemovalsMax) newRemovalsMax = id;
+                String type = r[iType] == null ? "" : r[iType].trim();
+                if (!type.endsWith("ShopRemoveLog")) continue;
+                if (id <= removalsMaxId) {
+                    removalsSkipped++;
+                    continue;
+                }
+                JsonObject data;
+                try {
+                    data = JsonParser.parseString(r[iData]).getAsJsonObject();
+                } catch (Exception e) {
+                    continue;
+                }
+                String player = optString(data, "player");
+                String reason = optString(data, "reason");
+                JsonObject shop = data.has("shop") && data.get("shop").isJsonObject()
+                        ? data.getAsJsonObject("shop") : null;
+                String world = "";
+                long px = 0, py = 0, pz = 0;
+                if (shop != null && shop.has("position") && shop.get("position").isJsonObject()) {
+                    JsonObject pos = shop.getAsJsonObject("position");
+                    world = optString(pos, "world");
+                    px = optLong(pos, "x");
+                    py = optLong(pos, "y");
+                    pz = optLong(pos, "z");
+                }
+                // 同一删除会产生多条记录（silentremove + 系统 Shop removed，甚至连续几秒的重复命令），
+                // 按 位置 + 10 秒时间窗 合并为一条
+                String posKey = world + "|" + px + "|" + py + "|" + pz;
+                long ts = parseTime(r[iTime]);
+                JsonObject cur = lastByPos.get(posKey);
+                if (cur != null) {
+                    long curTs = cur.has("t") ? cur.get("t").getAsLong() : 0;
+                    if (ts - curTs > 10000L) cur = null; // 超过时间窗视为新的删除记录
+                }
+                boolean isUser = !player.isEmpty() && !player.startsWith("[")
+                        && !player.equalsIgnoreCase("system") && !player.equalsIgnoreCase("console");
+                if (cur == null) {
+                    cur = new JsonObject();
+                    cur.addProperty("t", ts);
+                    cur.addProperty("source", "history");
+                    cur.addProperty("player", cleanPlayer(player, nameByUuid));
+                    if (!reason.isEmpty()) cur.addProperty("reason", reason);
+                    if (shop != null) {
+                        String ownerUuid = optString(shop, "owner");
+                        if (!ownerUuid.isEmpty()) {
+                            cur.addProperty("owner_uuid", ownerUuid);
+                            cur.addProperty("owner", resolveName(ownerUuid, nameByUuid));
+                        }
+                        String yaml = optString(shop, "item");
+                        Matcher m = ITEM_ID.matcher(yaml);
+                        String mat = m.find() ? normalizeMaterial(m.group(1)) : "";
+                        cur.addProperty("item", mat.isEmpty() ? "未知物品" : Materials.cn(mat));
+                        if (!mat.isEmpty()) cur.addProperty("material", mat);
+                        cur.addProperty("price", Math.round(optDouble(shop, "price") * 100.0) / 100.0);
+                    }
+                    if (!world.isEmpty()) {
+                        cur.addProperty("world", world);
+                        cur.addProperty("x", px);
+                        cur.addProperty("y", py);
+                        cur.addProperty("z", pz);
+                    }
+                    removalsList.add(cur);
+                    lastByPos.put(posKey, cur);
+                } else if (isUser) {
+                    // 优先保留带操作者的记录
+                    String curPlayer = cur.has("player") ? cur.get("player").getAsString() : "";
+                    boolean curIsUser = !curPlayer.isEmpty() && !curPlayer.startsWith("[") && !"系统".equals(curPlayer);
+                    if (!curIsUser) {
+                        cur.addProperty("player", cleanPlayer(player, nameByUuid));
+                        if (!reason.isEmpty()) cur.addProperty("reason", reason);
+                    }
+                }
+            }
+            removalsBatch.addAll(removalsList);
+        }
+        if (!removalsBatch.isEmpty()) {
+            plugin.store().addRemovals(removalsBatch);
+        }
+        if (newRemovalsMax > removalsMaxId) {
+            plugin.store().setSetting(REMOVALS_KEY, new JsonPrimitive(newRemovalsMax), "number");
+        }
+
         JsonObject o = new JsonObject();
         o.addProperty("success", true);
         o.addProperty("zip", zip.getName());
@@ -215,6 +324,8 @@ public final class HistoryImporter {
         o.addProperty("imported", batch.size());
         o.addProperty("skipped", skipped);
         o.addProperty("purchase_total", purchases + skipped);
+        o.addProperty("removals_imported", removalsBatch.size());
+        o.addProperty("removals_skipped", removalsSkipped);
         o.addProperty("shops_known", snap.size());
         if (fromTs != Long.MAX_VALUE && toTs > 0) {
             o.addProperty("from", fromTs);
@@ -421,6 +532,39 @@ public final class HistoryImporter {
         return v;
     }
 
+    /** 日志中的操作者：UUID → 玩家名；[SYSTEM]/空 → 系统 */
+    private String cleanPlayer(String raw, Map<String, String> nameByUuid) {
+        if (raw == null || raw.isEmpty()) return "";
+        String v = raw.trim();
+        if ("[SYSTEM]".equalsIgnoreCase(v)) return "系统";
+        if (v.length() == 36 && v.indexOf('-') > 0) return resolveName(v, nameByUuid);
+        return v;
+    }
+
+    private String optString(JsonObject o, String key) {
+        try {
+            return o != null && o.has(key) && o.get(key).isJsonPrimitive() ? o.get(key).getAsString() : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private long optLong(JsonObject o, String key) {
+        try {
+            return o != null && o.has(key) ? o.get(key).getAsLong() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private double optDouble(JsonObject o, String key) {
+        try {
+            return o != null && o.has(key) ? o.get(key).getAsDouble() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     private long parseTime(String s) {
         if (s == null) return 0;
         String v = s.trim();
@@ -464,9 +608,9 @@ public final class HistoryImporter {
         }
     }
 
-    private long readMaxId() {
+    private long readMaxId(String key) {
         try {
-            JsonObject s = plugin.store().getSetting(SETTING_KEY);
+            JsonObject s = plugin.store().getSetting(key);
             if (s != null && s.has("value") && s.get("value").isJsonPrimitive()) {
                 return s.get("value").getAsLong();
             }

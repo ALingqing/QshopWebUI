@@ -111,6 +111,78 @@ public final class AdminApi extends ApiBase {
     }
 
     // ============================================================
+    // GET /api/admin/balances  全部玩家余额（导出"玩家钱数"）
+    // ============================================================
+
+    public HttpResponse balances(HttpRequest req) {
+        HttpResponse deny = adminOnly(req);
+        if (deny != null) return deny;
+        if (!plugin.economy().available()) {
+            JsonObject o = obj();
+            put(o, "success", false);
+            put(o, "error", "经济系统不可用（未安装 Vault / 经济插件）");
+            return HttpResponse.json(o);
+        }
+        JsonObject result = new JsonObject();
+        try {
+            JsonArray arr = plugin.bridge().runOnMain(() -> {
+                JsonArray out = new JsonArray();
+                int count = 0;
+                for (org.bukkit.OfflinePlayer p : org.bukkit.Bukkit.getOfflinePlayers()) {
+                    if (p == null) continue;
+                    if (count >= 50000) break;
+                    String name = p.getName();
+                    if (name == null || name.isEmpty()) continue;
+                    double bal = plugin.economy().balance(p);
+                    JsonObject e = new JsonObject();
+                    e.addProperty("name", name);
+                    e.addProperty("uuid", String.valueOf(p.getUniqueId()));
+                    e.addProperty("balance", Math.round(bal * 100.0) / 100.0);
+                    long last = p.getLastPlayed();
+                    if (last > 0) e.addProperty("last_seen", last);
+                    out.add(e);
+                    count++;
+                }
+                return out;
+            });
+            List<JsonObject> list = new ArrayList<>();
+            for (JsonElement e : arr) list.add(e.getAsJsonObject());
+            list.sort((a, b) -> Double.compare(b.get("balance").getAsDouble(), a.get("balance").getAsDouble()));
+            JsonArray sorted = new JsonArray();
+            double sum = 0;
+            for (JsonObject e : list) {
+                sorted.add(e);
+                sum += e.get("balance").getAsDouble();
+            }
+            result.add("players", sorted);
+            result.addProperty("success", true);
+            result.addProperty("total", sorted.size());
+            result.addProperty("sum", Math.round(sum * 100.0) / 100.0);
+        } catch (Exception e) {
+            result.addProperty("success", false);
+            result.addProperty("error", "读取余额失败: " + e.getMessage());
+        }
+        return HttpResponse.json(result);
+    }
+
+    // ============================================================
+    // GET /api/admin/shops/removals  移除（删除）的商店记录
+    // ============================================================
+
+    public HttpResponse shopRemovals(HttpRequest req) {
+        HttpResponse deny = adminOnly(req);
+        if (deny != null) return deny;
+        List<JsonObject> list = plugin.store().removalsSnapshot();
+        JsonArray arr = new JsonArray();
+        for (int i = list.size() - 1; i >= 0; i--) arr.add(list.get(i)); // 最新在前
+        JsonObject o = obj();
+        put(o, "success", true);
+        put(o, "total", arr.size());
+        o.add("removals", arr);
+        return HttpResponse.json(o);
+    }
+
+    // ============================================================
     // GET /api/admin/shops/search
     // ============================================================
 

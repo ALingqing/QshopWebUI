@@ -553,20 +553,71 @@
     Toast.show('已导出 ' + trades.length + ' 条交易记录', 'success');
   }
 
+  // 导出全部玩家余额 CSV（管理员）
+  async function exportBalancesCsv() {
+    Toast.show('正在读取全部玩家余额...', 'info');
+    const r = await QSDB.getBalances();
+    if (!r || !r.success) { Toast.show('读取失败: ' + ((r && r.error) || '需要管理员登录'), 'error'); return; }
+    const list = r.players || [];
+    if (!list.length) { Toast.show('没有可导出的玩家数据', 'warning'); return; }
+    const cell = function (v) { const s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const head = ['玩家', 'UUID', '余额'];
+    const rows = list.map(function (p) { return [p.name, p.uuid, (Number(p.balance) || 0).toFixed(2)]; });
+    const csv = '\uFEFF' + [head].concat(rows).map(function (r2) { return r2.map(cell).join(','); }).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qshop-balances-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+    Toast.show('已导出 ' + list.length + ' 名玩家的余额（合计 ' + (Number(r.sum) || 0).toLocaleString() + '）', 'success');
+  }
+
+  // 导出移除（删除）商店记录 CSV（管理员）
+  async function exportShopRemovalsCsv() {
+    const r = await QSDB.getShopRemovals();
+    if (!r || !r.success) { Toast.show('读取失败: ' + ((r && r.error) || '需要管理员登录'), 'error'); return; }
+    const list = r.removals || [];
+    if (!list.length) { Toast.show('暂无移除商店记录（可点「导入 QuickShop 历史交易」找回历史记录）', 'warning'); return; }
+    const cell = function (v) { const s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    const head = ['时间', '来源', '操作者', '原因', '商店ID', '店主', '物品', '单价', '世界', 'X', 'Y', 'Z'];
+    const rows = list.map(function (x) {
+      const d = new Date(Number(x.t) || 0);
+      const time = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      return [time, x.source === 'history' ? '历史导入' : '实时记录', x.player, x.reason, x.shop_id, x.owner, x.item, x.price, x.world, x.x, x.y, x.z];
+    });
+    const csv = '\uFEFF' + [head].concat(rows).map(function (r2) { return r2.map(cell).join(','); }).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qshop-shop-removals-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+    Toast.show('已导出 ' + list.length + ' 条移除商店记录', 'success');
+  }
+
   // 导入 QuickShop 历史交易（自动 /qs export + 解析导入）；onDone 为成功后的刷新回调
   function importQsHistory(onDone) {
     Modal.confirm({
       title: '导入 QuickShop 历史交易',
       danger: false,
-      body: '<div>将自动执行 <b>/qs export</b> 导出 QuickShop 数据库，并把<b>历史购买 / 收购记录</b>导入本站交易统计。</div>'
+      body: '<div>将自动执行 <b>/qs export</b> 导出 QuickShop 数据库，并导入两类历史数据：<b>购买 / 收购记录</b>（交易统计）与<b>商店移除记录</b>（审计导出）。</div>'
         + '<div class="hint" style="margin-top:6px">统计功能上线之前发生的游戏内交易也会被一并找回；重复导入会自动去重。</div>',
       confirmText: '开始导入',
       onConfirm: async function () {
         Toast.show('正在导出 QuickShop 数据并导入，请稍候...', 'info');
         const r = await QSDB.importTradeHistory();
         if (r && r.success) {
-          let msg = '导入完成：新增 ' + (r.imported || 0) + ' 条历史交易';
-          if (r.skipped) msg += '，跳过已有 ' + r.skipped + ' 条';
+          const parts = [];
+          if (r.imported) parts.push(r.imported + ' 条历史交易');
+          if (r.removals_imported) parts.push(r.removals_imported + ' 条商店移除记录');
+          let msg = parts.length ? ('导入完成：新增 ' + parts.join('、')) : '导入完成：没有新的历史数据';
+          if (r.skipped) msg += '（跳过已有 ' + r.skipped + ' 条交易）';
           if (!r.fresh) msg += '（使用了已有导出包）';
           Toast.show(msg, 'success');
           if (typeof onDone === 'function') onDone();
@@ -3265,7 +3316,7 @@
     // 导出
     const exportCard = el('div', { class: 'admin-card' }, [
       el('h3', { text: '导出数据' }),
-      el('p', { class: 'hint', text: '商店数据可导出为 JSON / CSV；交易记录（网页 + 游戏内 + 历史导入）可导出为 CSV，用于统计分析和外部分析。' })
+      el('p', { class: 'hint', text: '商店数据可导出为 JSON / CSV；交易记录、全部玩家余额、被移除的商店记录均可导出为 CSV，用于统计分析和审计。' })
     ]);
     const exportBtn = el('button', { class: 'neo-btn primary', text: '导出为 JSON',
       onclick: async () => {
@@ -3311,8 +3362,16 @@
     const importHistoryBtn2 = el('button', { class: 'neo-btn', text: '📥 导入 QuickShop 历史交易',
       onclick: function () { importQsHistory(); }
     });
+    const exportBalancesBtn = el('button', { class: 'neo-btn', text: '导出玩家余额 CSV',
+      onclick: function () { exportBalancesCsv(); }
+    });
+    const exportRemovalsBtn = el('button', { class: 'neo-btn', text: '导出移除商店记录 CSV',
+      onclick: function () { exportShopRemovalsCsv(); }
+    });
     btnRow1.appendChild(exportTradesCsvBtn);
     btnRow1.appendChild(importHistoryBtn2);
+    btnRow1.appendChild(exportBalancesBtn);
+    btnRow1.appendChild(exportRemovalsBtn);
     exportCard.appendChild(btnRow1);
     root.appendChild(exportCard);
 
