@@ -52,7 +52,7 @@ QShopWebUI 把 Web 管理界面、HTTP 服务和 QuickShop-Hikari 适配层整�
 - 物品中文名、英文注册名和拼音搜索
 - 按物品、店主、世界、价格和商店类型筛选
 - 商店详情、坐标、库存状态和价格区间查看
-- 在线购买和离线购买队列（填写游戏 ID + 游戏密码即可下单）
+- 在线购买和离线购买队列（填写游戏 ID + 游戏内一次性验证码，验证码在游戏内执行 /qshopwebui code 获取）
 - 限购支持：服务器安装 QuickShop「Limited」扩展时，网页购买与游戏内共用每人额度，弹窗显示剩余可买数量
 - 数据统计、访问统计和商店数量概览
 
@@ -74,7 +74,7 @@ QShopWebUI 把 Web 管理界面、HTTP 服务和 QuickShop-Hikari 适配层整�
 | 服务端 | Paper 或 Spigot 1.18 及以上 |
 | Java | Java 17 及以上 |
 | 前置插件 | QuickShop-Hikari |
-| 可选插件 | Vault 经济插件（购买/收购）、AuthMe（下单密码验证）、QuickShop「Limited」扩展（限购） |
+| 可选插件 | Vault 经济插件（购买/收购）、QuickShop「Limited」扩展（限购） |
 | 构建环境 | Maven 3.6 及以上 |
 
 插件对 QuickShop-Hikari 使用反射调用，因此编译时不需要安装 QuickShop-Hikari JAR。QuickShop 缺失时插件仍可加载，但商店页面没有实际商店数据。
@@ -83,7 +83,7 @@ QShopWebUI 把 Web 管理界面、HTTP 服务和 QuickShop-Hikari 适配层整�
 
 1. 从 Releases 页面下载最新的 `QShopWebUI-x.y.z.jar`，或按「自己构建」一节自行编译。
 2. 将 JAR 放入服务端的 `plugins/` 目录。
-3. 安装并启用 QuickShop-Hikari；如果需要网页购买或收购，再安装 Vault 和经济插件；服务器装了 AuthMe 时，下单会自动验证游戏密码。
+3. 安装并启用 QuickShop-Hikari；如果需要网页购买或收购，再安装 Vault 和经济插件；下单前玩家需要在游戏内执行 /qshopwebui code 获取一次性验证码。
 4. 启动服务器，等待插件生成 `plugins/QShopWebUI/config.yml`。
 5. 修改管理员账号、端口和运行模式。
 6. 执行 `/qshopwebui reload`，或重启服务器。
@@ -162,6 +162,8 @@ purchase:
   enabled: true
   max-amount: 64
   allow-offline-buy: true
+  game-code-ttl-seconds: 300
+  game-code-max-attempts: 5
 
 pages:
   hide-home: false
@@ -201,11 +203,12 @@ password: sha256:<64位十六进制摘要>
 | 命令 | 说明 |
 | --- | --- |
 | `/qshopwebui` | 显示帮助 |
+| `/qshopwebui code` | 生成网页交易一次性验证码（所有玩家可用，需在游戏内执行） |
 | `/qshopwebui status` | 查看监听端口、运行模式、QuickShop 状态和商店数量 |
 | `/qshopwebui reload` | 重新读取配置并重启网页监听 |
 | `/qshopwebui port <端口>` | 修改网页端口并尝试重新绑定 |
 
-命令权限：`qshopwebui.admin`，默认仅 OP 拥有。输入 `/qshopwebui ` 后，插件会自动补全 `status`、`reload` 和 `port`；输入 `port` 后会提示当前端口。
+`status`、`reload`、`port` 命令权限：`qshopwebui.admin`，默认仅 OP 拥有；`code` 所有玩家可用。输入 `/qshopwebui ` 后，管理员会自动补全子命令；输入 `port` 后会提示当前端口。
 
 ## 演示站
 
@@ -229,7 +232,7 @@ password: sha256:<64位十六进制摘要>
 mvn clean package
 ```
 
-产物：`target/QShopWebUI-1.0.1.jar`。
+产物：`target/QShopWebUI-<版本>.jar`，例如测试版为 `QShopWebUI-1.1.0-beta.1.jar`。
 
 构建请带上 `clean`：否则可能把编辑器（VS Code / IDEA）增量编译到 `target/classes` 的旧产物直接打进 jar。
 
@@ -252,16 +255,26 @@ node tools/verify-jar.mjs
 | 工作流 | 触发方式 | 做什么 |
 | --- | --- | --- |
 | CI | 推送 `main`、提交 PR、手动触发 | 构建插件、校验 JAR 内容、上传构建产物 |
-| Release | 推送 `main`、推送 `v*` 标签、手动触发 | 发现新版本号时自动打标签、创建 Release、附加 JAR |
+| Release | 推送 `main` / `dev`、推送 `v*` 标签、手动触发 | 发现新版本号时自动打标签、创建 Release、附加 JAR；带 `-` 的版本号（如 `1.1.0-beta.1`）按测试版预发布处理 |
 
-发行一个新版本的完整流程：
+发行前请同时修改 **`pom.xml`** 和 **`src/main/resources/plugin.yml`** 的 `version`（两处不一致时工作流会直接报错，避免产出内含版本号不一致的 JAR）。版本号未变化时自动跳过，不会重复发行。
 
-1. 修改 `pom.xml` 里的 `version`，例如从 `1.0.0` 改成 `1.1.0`。
+### 正式版（main 分支）
+
+1. 把 `pom.xml` 与 `plugin.yml` 的版本改成正式号，例如从 `1.0.1` 改成 `1.1.0`。
 2. 提交并推送到 `main`。
-3. 工作流检测到 `v1.1.0` 还不存在，自动构建、创建标签、创建 Release 并上传 JAR。
-4. 版本号没变时自动跳过，不会重复发行。
+3. 工作流检测到 `v1.1.0` 还不存在，自动构建、创建标签、创建 Release 并上传 `QShopWebUI-1.1.0.jar`。
 
-习惯手动打标签也可以：推送 `v1.1.0` 标签会直接触发发行，工作流也可以在 Actions 页面手动运行。
+### 测试版（dev 分支）
+
+版本号格式为 `A.b.c-beta.N`，例如 `1.1.0-beta.1`：
+
+1. 在 `dev` 分支把 `pom.xml` 与 `plugin.yml` 的版本改成 `1.1.0-beta.1`；下一个测试版递增为 `1.1.0-beta.2`，以此类推。
+2. 提交并推送到 `dev`。
+3. 工作流检测到 `v1.1.0-beta.1` 还不存在，自动构建并创建**预发布（Pre-release）**：标题 `qsweb 1.1.0-beta.1（测试版）`，附件 `qsweb-1.1.0-beta.1.jar`。预发布不会成为 Releases 页面的 Latest，不影响正式版用户。
+4. `dev` 分支使用不带 `-` 的正式版本号时不会发行；要发正式版请合并到 `main` 后操作。
+
+习惯手动打标签也可以：在 `dev` 上执行 `git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1` 会直接触发发行（标签需与 `pom.xml` 版本一致）；也可以在 Actions 页面选择 Release 工作流、目标分支选 `dev` 手动运行。
 
 ## 目录结构
 
@@ -310,7 +323,11 @@ QshopWebUI/
 
 ### 网页购买失败？
 
-确认购买功能已启用，并安装可用的 Vault 经济后端。玩家在线时物品直接发放；玩家离线时需要开启 `purchase.allow-offline-buy`；服务器安装 AuthMe 时，下单还需输入该玩家的游戏密码。
+确认购买功能已启用，并安装可用的 Vault 经济后端；下单需要先在游戏内执行 `/qshopwebui code` 获取一次性验证码。玩家在线时物品直接发放；玩家离线时需要开启 `purchase.allow-offline-buy`。
+
+### 提示验证码无效或已过期？
+
+验证码需在游戏内执行 `/qshopwebui code` 生成，默认 5 分钟有效、只能使用一次，错误尝试次数过多会作废。重新执行命令获取新验证码即可；有效期和尝试次数可在配置文件的 `purchase.game-code-ttl-seconds`、`purchase.game-code-max-attempts` 中调整。
 
 ### 提示超出限购？
 

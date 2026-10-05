@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags:
       - "v*"
   workflow_dispatch:
@@ -38,15 +38,51 @@ jobs:
             echo "::error::无法从 pom.xml 读取版本号"
             exit 1
           fi
+
+          yml_version="$(sed -n 's/^version:[[:space:]]*//p' src/main/resources/plugin.yml | head -n1 | tr -d '[:space:]')"
+          if [ "$yml_version" != "$version" ]; then
+            echo "::error::plugin.yml 版本(${yml_version})与 pom.xml 版本(${version})不一致，请先同步两处版本号"
+            exit 1
+          fi
+
           tag="v${version}"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             tag="${GITHUB_REF_NAME}"
+            if [ "$tag" != "v${version}" ]; then
+              echo "::error::标签 ${tag} 与 pom.xml 版本 ${version} 不一致，请在对应版本号的提交上打标签"
+              exit 1
+            fi
           fi
+
+          case "$version" in
+            *-*)
+              prerelease="true"
+              files="target/qsweb-*.jar"
+              title="qsweb ${version}（测试版）"
+              ;;
+            *)
+              prerelease="false"
+              files="target/QShopWebUI-*.jar"
+              title="QShopWebUI v${version}"
+              ;;
+          esac
+
+          enabled="true"
+          if [ "${GITHUB_REF_TYPE}" = "branch" ] && [ "${GITHUB_REF_NAME}" = "dev" ] && [ "$prerelease" != "true" ]; then
+            enabled="false"
+            echo "::notice::dev 分支只发行测试版（版本号需带 -beta 等预发布后缀），本次跳过发行"
+          fi
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+          echo "files=${files}" >> "$GITHUB_OUTPUT"
+          echo "title=${title}" >> "$GITHUB_OUTPUT"
+          echo "enabled=${enabled}" >> "$GITHUB_OUTPUT"
 
       - name: 检查是否已发行
         id: check
+        if: steps.meta.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -69,20 +105,31 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: node tools/verify-jar.mjs
 
+      - name: 重命名测试版产物
+        if: steps.check.outputs.exists == 'false' && steps.meta.outputs.prerelease == 'true'
+        run: mv "target/QShopWebUI-${{ steps.meta.outputs.version }}.jar" "target/qsweb-${{ steps.meta.outputs.version }}.jar"
+
       - name: 创建 Release
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: QShopWebUI ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.title }}
           target_commitish: ${{ github.sha }}
-          files: target/QShopWebUI-*.jar
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          files: ${{ steps.meta.outputs.files }}
           generate_release_notes: true
 
       - name: 写入摘要
         run: |
-          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+          if [ "${{ steps.meta.outcome }}" != "success" ]; then
+            echo "版本读取或校验失败，请查看上方步骤日志。" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.meta.outputs.enabled }}" != "true" ]; then
+            echo "dev 分支只发行测试版（版本号需带 -beta 等后缀），本次跳过发行。" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.check.outputs.exists }}" = "true" ]; then
             echo "版本 ${{ steps.meta.outputs.tag }} 已存在，本次跳过发行。" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            echo "已创建预发布（测试版）${{ steps.meta.outputs.tag }}，附件 qsweb-${{ steps.meta.outputs.version }}.jar。" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "已创建发行版本 ${{ steps.meta.outputs.tag }}，附件为本次构建的 JAR。" >> "$GITHUB_STEP_SUMMARY"
           fi
