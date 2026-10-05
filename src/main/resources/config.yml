@@ -68,6 +68,9 @@ purchase:
   max-amount: 64
   # 玩家不在线时是否允许下单（物品在玩家下次上线时自动发放）。
   allow-offline-buy: true
+  # 玩家在游戏内执行 /qshopwebui code 后，将验证码填入网页。
+  game-code-ttl-seconds: 300
+  game-code-max-attempts: 5
 
 # ------------------------------------------------------------
 # 前台页面

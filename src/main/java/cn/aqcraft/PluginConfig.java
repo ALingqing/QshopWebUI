@@ -34,6 +34,8 @@ public final class PluginConfig {
     public int purchaseMaxAmount = 64;
     /** 登录（游戏账号）后是否允许离线购买（物品上线时发放） */
     public boolean allowOfflineBuy = true;
+    public int gameCodeTtlSeconds = 300;
+    public int gameCodeMaxAttempts = 5;
 
     // === 网站显示 ===
     public String serverName = "";
@@ -70,6 +72,8 @@ public final class PluginConfig {
         cfg.purchaseEnabled = c.getBoolean("purchase.enabled", true);
         cfg.purchaseMaxAmount = Math.max(1, c.getInt("purchase.max-amount", 64));
         cfg.allowOfflineBuy = c.getBoolean("purchase.allow-offline-buy", true);
+        cfg.gameCodeTtlSeconds = Math.max(30, c.getInt("purchase.game-code-ttl-seconds", 300));
+        cfg.gameCodeMaxAttempts = Math.max(1, c.getInt("purchase.game-code-max-attempts", 5));
         cfg.serverName = c.getString("server-name", "").trim();
         cfg.serverSubtitle = c.getString("server-subtitle", "").trim();
         for (String k : new String[]{"home", "buy", "sell", "browse", "shops", "stats"}) {

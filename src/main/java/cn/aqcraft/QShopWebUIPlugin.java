@@ -1,6 +1,7 @@
 package cn.aqcraft;
 
 import cn.aqcraft.auth.SessionManager;
+import cn.aqcraft.auth.GameCodeService;
 import cn.aqcraft.bridge.AuthMeBridge;
 import cn.aqcraft.bridge.EconomyBridge;
 import cn.aqcraft.bridge.LimitedBridge;
@@ -50,6 +51,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private PurchaseService purchases;
     private AuthMeBridge authme;
     private LimitedBridge limited;
+    private GameCodeService gameCodes;
 
     // ============================================================
     // 生命周期
@@ -77,6 +79,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         economy = new EconomyBridge(this);
         economy.reload();
         purchases = new PurchaseService(this);
+        gameCodes = new GameCodeService(this);
 
         authme = new AuthMeBridge(this);
         authme.reload();
@@ -170,6 +173,17 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length > 0 && "code".equalsIgnoreCase(args[0])) {
+            if (!(sender instanceof org.bukkit.entity.Player)) {
+                sender.sendMessage("§c只有游戏玩家可以生成验证码");
+                return true;
+            }
+            org.bukkit.entity.Player player = (org.bukkit.entity.Player) sender;
+            String code = gameCodes.issue(player);
+            player.sendMessage("§aQShopWebUI 网页交易验证码: §e§l" + code);
+            player.sendMessage("§7有效期 " + config.gameCodeTtlSeconds + " 秒，仅可使用一次。请勿发送给他人。");
+            return true;
+        }
         if (!sender.hasPermission("qshopwebui.admin")) {
             sender.sendMessage("§c权限不足");
             return true;
@@ -229,7 +243,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
             return Collections.emptyList();
         }
         if (args.length == 1) {
-            return partial(args[0], Arrays.asList("status", "reload", "port"));
+            return partial(args[0], Arrays.asList("code", "status", "reload", "port"));
         }
         if (args.length == 2 && "port".equalsIgnoreCase(args[0])) {
             return partial(args[1], Collections.singletonList(String.valueOf(config.port)));
@@ -250,6 +264,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     private void help(CommandSender sender) {
         sender.sendMessage("§6===== QShopWebUI =====");
+        sender.sendMessage("§e/qshopwebui code §7- 生成网页交易验证码（游戏玩家）");
         sender.sendMessage("§e/qshopwebui status §7- 查看运行状态");
         sender.sendMessage("§e/qshopwebui reload §7- 重载配置");
         sender.sendMessage("§e/qshopwebui port <端口> §7- 修改并重绑端口");
@@ -339,6 +354,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public LimitedBridge limited() {
         return limited;
+    }
+
+    public GameCodeService gameCodes() {
+        return gameCodes;
     }
 
     /** 网页修改密码后刷新内存中的配置 */

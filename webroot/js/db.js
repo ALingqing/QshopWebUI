@@ -1034,12 +1034,12 @@
       }
     },
 
-    // 网页「在线购买」：填游戏 ID + 游戏密码（AuthMe 验证）购买
-    purchaseShop: async function (shopId, player, amount, password) {
+    // 网页「在线购买」：填游戏 ID + 游戏内一次性验证码购买
+    purchaseShop: async function (shopId, player, amount, code) {
       try {
         const data = await apiCall('/purchase', {
           method: 'POST',
-          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, code: code || '' }
         });
         if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false, error: '服务器无响应' };
@@ -1048,12 +1048,12 @@
       }
     },
 
-    // 网页「在线出售」（卖给收购商店）：填游戏 ID + 游戏密码（AuthMe 验证）出售
-    sellShop: async function (shopId, player, amount, password) {
+    // 网页「在线出售」（卖给收购商店）：填游戏 ID + 游戏内一次性验证码出售
+    sellShop: async function (shopId, player, amount, code) {
       try {
         const data = await apiCall('/sell', {
           method: 'POST',
-          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, code: code || '' }
         });
         if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false, error: '服务器无响应' };

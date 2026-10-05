@@ -19,9 +19,9 @@ public final class PurchaseApi extends ApiBase {
         JsonObject b = body(req);
         String shopId = jstr(b, "shop_id", "");
         String player = jstr(b, "player", "");
-        String password = jstr(b, "password", "");
+        String code = jstr(b, "code", "");
         int amount = jint(b, "amount", 1);
-        JsonObject result = plugin.purchases().purchase(shopId, player, amount, password);
+        JsonObject result = plugin.purchases().purchase(shopId, player, amount, code);
         return HttpResponse.json(result);
     }
 
@@ -32,9 +32,9 @@ public final class PurchaseApi extends ApiBase {
         JsonObject b = body(req);
         String shopId = jstr(b, "shop_id", "");
         String player = jstr(b, "player", "");
-        String password = jstr(b, "password", "");
+        String code = jstr(b, "code", "");
         int amount = jint(b, "amount", 1);
-        JsonObject result = plugin.purchases().sell(shopId, player, amount, password);
+        JsonObject result = plugin.purchases().sell(shopId, player, amount, code);
         return HttpResponse.json(result);
     }
 

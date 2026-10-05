@@ -37,7 +37,7 @@ public final class PurchaseService {
         this.plugin = plugin;
     }
 
-    public JsonObject purchase(String shopId, String playerName, int amount, String password) {
+    public JsonObject purchase(String shopId, String playerName, int amount, String code) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
         if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
         final String name = playerName.trim();
@@ -50,15 +50,7 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
-        // 安全验证：服务器安装 AuthMe 时，需验证该玩家的游戏密码（防止冒用他人账号）
-        if (plugin.authme().available()) {
-            if (password == null || password.isEmpty()) {
-                return err("请输入游戏密码（AuthMe 验证身份）");
-            }
-            if (!plugin.authme().checkPassword(name, password)) {
-                return err("游戏密码验证失败（请检查该账号的 AuthMe 密码）");
-            }
-        }
+        if (!plugin.gameCodes().verifyAndConsume(name, code)) return err("验证码无效、已过期或玩家不在线，请在游戏内执行 /qshopwebui code");
 
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
@@ -80,7 +72,7 @@ public final class PurchaseService {
     }
 
     /** 玩家出售给收购商店（网页收购界面） */
-    public JsonObject sell(String shopId, String playerName, int amount, String password) {
+    public JsonObject sell(String shopId, String playerName, int amount, String code) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
         if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
         final String name = playerName.trim();
@@ -92,15 +84,7 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
-        // 安全验证：服务器安装 AuthMe 时，需验证该玩家的游戏密码（防止冒用他人账号）
-        if (plugin.authme().available()) {
-            if (password == null || password.isEmpty()) {
-                return err("请输入游戏密码（AuthMe 验证身份）");
-            }
-            if (!plugin.authme().checkPassword(name, password)) {
-                return err("游戏密码验证失败（请检查该账号的 AuthMe 密码）");
-            }
-        }
+        if (!plugin.gameCodes().verifyAndConsume(name, code)) return err("验证码无效、已过期或玩家不在线，请在游戏内执行 /qshopwebui code");
 
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
@@ -314,6 +298,8 @@ public final class PurchaseService {
             plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "purchase",
                     name + " 网页购买 " + e.shop_cn_name + " x" + amount + " 花费 " + total);
             JsonObject trade = new JsonObject();
+            trade.addProperty("order_id", "WEB-" + UUID.randomUUID());
+            trade.addProperty("status", "SUCCESS");
             trade.addProperty("t", System.currentTimeMillis());
             trade.addProperty("type", "BUY");
             trade.addProperty("source", "web");
@@ -448,6 +434,8 @@ public final class PurchaseService {
             plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "sell",
                     name + " 网页出售 " + e.shop_cn_name + " x" + amount + " 获得 " + total);
             JsonObject trade = new JsonObject();
+            trade.addProperty("order_id", "WEB-" + UUID.randomUUID());
+            trade.addProperty("status", "SUCCESS");
             trade.addProperty("t", System.currentTimeMillis());
             trade.addProperty("type", "SELL");
             trade.addProperty("source", "web");

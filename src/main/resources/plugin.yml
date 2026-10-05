@@ -10,9 +10,8 @@ softdepend: [QuickShop, QuickShop-Hikari, AuthMe, qssuite-limited]
 commands:
   qshopwebui:
     description: QShopWebUI 管理命令
-    usage: /qshopwebui <reload|status|port <端口>>
+    usage: /qshopwebui <code|reload|status|port <端口>>
     aliases: [qsw, qshopweb]
-    permission: qshopwebui.admin
 permissions:
   qshopwebui.admin:
     description: 允许管理 QShopWebUI
