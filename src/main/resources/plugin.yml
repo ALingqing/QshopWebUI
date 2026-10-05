@@ -1,5 +1,5 @@
 name: QShopWebUI
-version: 1.1.0-beta.1
+version: 1.1.0-beta.2
 main: cn.aqcraft.QShopWebUIPlugin
 api-version: 1.17
 description: QuickShop-Hikari 商店 Web 管理系统（单端口内嵌 Web UI，直接读取 QuickShop 数据）
