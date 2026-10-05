@@ -908,7 +908,7 @@
   function switchTab(tab, opts) {
     uiLogger.info('[UI] 切换页面 → ' + tab + (opts && opts.material ? ' (物品: ' + opts.material + ')' : ''));
     // 权限检查
-    if ((tab === 'admin' || tab === 'data' || tab === 'backup' || tab === 'monitor' || tab === 'announce') && !state.isAdmin) {
+    if ((tab === 'admin' || tab === 'data' || tab === 'backup' || tab === 'monitor' || tab === 'announce' || tab === 'orders' || tab === 'compare' || tab === 'audit' || tab === 'business' || tab === 'stock' || tab === 'status' || tab === 'notify') && !state.isAdmin) {
       Toast.show('请先使用管理员账户登录', 'warning');
       showLoginModal();
       return;
@@ -996,6 +996,13 @@
         case 'sell': initSellPage(); break;
         case 'stats': initStatsPage(); break;
         case 'monitor': initMonitorPage(); break;
+        case 'orders': initOrdersPage(); break;
+        case 'compare': initComparePage(); break;
+        case 'audit': initAuditPage(); break;
+        case 'business': initBusinessPage(); break;
+        case 'stock': initStockPage(); break;
+        case 'status': initStatusPage(); break;
+        case 'notify': initNotifyPage(); break;
         case 'backup': initBackupPage(); break;
         case 'admin': initAdmin(); break;
         case 'data': initDataIO(); break;
@@ -1880,7 +1887,7 @@
               titleWrap.appendChild(matSmall);
             }
           } else {
-            // 整个文本缺失：整行替换为预设图片（淡入）
+            // 整个文本缺失：整行显示预设图片（淡入）
             titleWrap.classList.add('text-missing-row');
             const fb = el('img', {
               class: 'text-missing-img text-missing-row-img',
@@ -2110,7 +2117,9 @@
       r.appendChild(el('td', { text: String(val) }));
       info.appendChild(r);
     }
-    tr('价格', '$' + (shop.price_display !== undefined && shop.price_display !== null ? String(shop.price_display) : Number(shop.price || 0).toFixed(2)));
+    tr('价格', '$' + (shop.price_display !== undefined && shop.price_display !== null
+      ? String(shop.price_display)
+      : unitPrice.toFixed(2)));
     tr('堆叠', shop.stacking_amount || 1);
     tr('世界', shop.world || '-');
     tr('坐标', '(' + shop.x + ', ' + shop.y + ', ' + shop.z + ')');
@@ -2262,7 +2271,6 @@
             try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
             Toast.show('✓ 购买成功：' + r.item + ' ×' + r.amount + ' 份，花费 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
             QSDB.clearCache();
-            refreshTradePage();
             try { modalRef.close(); } catch (e) { }
             // 稍后刷新当前物品详情页（库存已变化）
             setTimeout(function () {
@@ -2427,6 +2435,7 @@
     const maxBtn = el('button', { class: 'neo-btn', text: '最大', style: { marginLeft: '8px', padding: '8px 14px' } });
     const summary = el('div', { class: 'purchase-summary' });
     const balanceInfo = el('div', { style: { fontSize: '13px', fontWeight: '600', color: '#065f46', marginTop: '-4px' } });
+    let currentBalance = null;
     balanceInfo.textContent = '💰 输入游戏 ID 后自动查询余额';
     nameInput.addEventListener('change', function () {
       const n = nameInput.value.trim();
@@ -2434,7 +2443,8 @@
       balanceInfo.textContent = '💰 查询中...';
       QSDB.getWallet(n).then(function (w) {
         if (w && w.success && w.balance != null) {
-          balanceInfo.textContent = '💰 ' + n + ' 的余额: $' + w.balance;
+          currentBalance = Number(w.balance);
+          balanceInfo.textContent = '💰 ' + n + ' 的余额: $' + w.balance + (w.pending_items ? ('（待领取 ' + w.pending_items + ' 件）') : '');
         } else {
           balanceInfo.textContent = '💰 无法查询余额（经济插件未安装或账户不存在）';
         }
@@ -3874,7 +3884,7 @@
   }
 
   //  备份恢复管理页面 (initBackupPage)
-  function initBackupPage() {
+  async function initBackupPage() {
     const root = ensureTabPanel('backup');
     if (!root) return;
 
@@ -4027,7 +4037,7 @@
         let html = '<thead><tr><th>文件名</th><th>大小</th><th>创建时间</th><th>类型</th><th>商店数</th><th>操作</th></tr></thead><tbody>';
         const files = listData.files || [];
         if (files.length === 0) {
-          html += '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888;">暂无备份文件</td></tr>';
+          html += '<tr><td colspan="6" style="text-align:center;padding:18px;color:#888;">暂无备份文件</td></tr>';
         } else {
           files.forEach(f => {
             const sizeStr = f.size_bytes !== undefined ? ((f.size_bytes / 1024).toFixed(1) + ' KB') : '-';

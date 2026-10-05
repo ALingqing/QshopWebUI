@@ -820,6 +820,8 @@
     isLoggedIn: isLoggedIn,
     isAdmin: isAdmin,
     getSession: getSession,
+    // 通用 API 调用（自动带 session、GET 缓存），供新页签/附属功能使用
+    call: apiCall,
 
     // 查询连接状态
     getQsFilterStatus: async function () {
