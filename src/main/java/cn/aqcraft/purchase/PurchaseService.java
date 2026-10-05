@@ -67,7 +67,7 @@ public final class PurchaseService {
         try {
             return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt));
         } catch (Throwable t) {
-            return err("交易执行失败: " + t.getMessage());
+            return failRecord("BUY", entry, name, amt, "交易执行失败: " + t.getMessage());
         }
     }
 
@@ -101,7 +101,7 @@ public final class PurchaseService {
         try {
             return plugin.bridge().runOnMain(() -> doSell(entry, name, amt));
         } catch (Throwable t) {
-            return err("交易执行失败: " + t.getMessage());
+            return failRecord("SELL", entry, name, amt, "交易执行失败: " + t.getMessage());
         }
     }
 
@@ -212,14 +212,64 @@ public final class PurchaseService {
         }
     }
 
+    /**
+     * 内部程序化购买（供扩展 API / 其他插件调用）。
+     * 跳过验证码校验——调用方为受信任的插件上下文。
+     */
+    public JsonObject purchaseInternal(String shopId, String playerName, int amount) {
+        if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
+        if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
+        final String name = playerName.trim();
+        int max = plugin.config().purchaseMaxAmount;
+        final int amt = Math.max(1, Math.min(amount <= 0 ? 1 : amount, max));
+        ShopEntry found = null;
+        for (ShopEntry s : plugin.shopData().shops()) {
+            if (shopId.trim().equals(s.shop_id)) { found = s; break; }
+        }
+        if (found == null) return err("商店不存在或数据未同步");
+        if (!found.isSelling()) return err("这是收购商店，请使用 sell");
+        if (!(found.price > 0)) return err("该商店价格无效");
+        final ShopEntry entry = found;
+        try {
+            return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt));
+        } catch (Throwable t) {
+            return failRecord("BUY", entry, name, amt, "交易执行失败: " + t.getMessage());
+        }
+    }
+
+    /**
+     * 内部程序化出售（供扩展 API / 其他插件调用）。
+     * 跳过验证码校验——调用方为受信任的插件上下文。
+     */
+    public JsonObject sellInternal(String shopId, String playerName, int amount) {
+        if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
+        if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
+        final String name = playerName.trim();
+        int max = plugin.config().purchaseMaxAmount;
+        final int amt = Math.max(1, Math.min(amount <= 0 ? 1 : amount, max));
+        ShopEntry found = null;
+        for (ShopEntry s : plugin.shopData().shops()) {
+            if (shopId.trim().equals(s.shop_id)) { found = s; break; }
+        }
+        if (found == null) return err("商店不存在或数据未同步");
+        if (found.isSelling()) return err("这是出售商店，请使用 purchase");
+        if (!(found.price > 0)) return err("该商店价格无效");
+        final ShopEntry entry = found;
+        try {
+            return plugin.bridge().runOnMain(() -> doSell(entry, name, amt));
+        } catch (Throwable t) {
+            return failRecord("SELL", entry, name, amt, "交易执行失败: " + t.getMessage());
+        }
+    }
+
     private JsonObject doPurchase(ShopEntry e, String name, int amount) {
         Player buyer = Bukkit.getPlayerExact(name);
         boolean online = buyer != null && buyer.isOnline();
         if (!online && !plugin.config().allowOfflineBuy) {
-            return err("玩家 " + name + " 不在线（离线购买已被服务器关闭：config.yml purchase.allow-offline-buy）");
+            return failRecord("BUY", e, name, amount, "玩家 " + name + " 不在线（离线购买已被服务器关闭：config.yml purchase.allow-offline-buy）");
         }
         EconomyBridge eco = plugin.economy();
-        if (!eco.available()) return err("服务器未安装经济插件（需要 Vault 支持）");
+        if (!eco.available()) return failRecord("BUY", e, name, amount, "服务器未安装经济插件（需要 Vault 支持）");
 
         double unit = e.price;
         double total = round2(unit * amount);
@@ -230,7 +280,7 @@ public final class PurchaseService {
 
         // 样品物品：容器实物（NBT 最完整）→ QuickShop 数据 → 基础材质；玩家头皮肤双源补齐
         ItemStack sample = resolveSample(e, shop, chestInv);
-        if (sample == null) return err("无法确定该商店的物品");
+        if (sample == null) return failRecord("BUY", e, name, amount, "无法确定该商店的物品");
 
         long needItems = (long) amount * Math.max(1, e.stacking_amount);
 
@@ -239,31 +289,31 @@ public final class PurchaseService {
             int available = countItems(chestInv, sample);
             if (available < needItems) {
                 long canBuy = available / Math.max(1, e.stacking_amount);
-                return err("商店库存不足：最多可购买 " + canBuy + " 份");
+                return failRecord("BUY", e, name, amount, "商店库存不足：最多可购买 " + canBuy + " 份");
             }
         }
 
         // 付款人（在线用 Player；离线用缓冲的离线账户）
         OfflinePlayer payer = online ? buyer : resolvePlayer(name);
         if (payer == null) {
-            return err("找不到玩家 " + name + " 的账户（需至少登录过一次服务器）");
+            return failRecord("BUY", e, name, amount, "找不到玩家 " + name + " 的账户（需至少登录过一次服务器）");
         }
 
         // 限购（QuickShop「Limited」扩展）：与游戏内共用每人每周期额度
         if (shop != null && plugin.limited().available()) {
             String deny = plugin.limited().checkTrade(shop, payer.getUniqueId(), amount);
-            if (deny != null) return err(deny);
+            if (deny != null) return failRecord("BUY", e, name, amount, deny);
         }
 
         // 余额检查
         double balance = eco.balance(payer);
         if (balance < total) {
-            return err("余额不足：需要 " + total + "，当前 " + round2(balance));
+            return failRecord("BUY", e, name, amount, "余额不足：需要 " + total + "，当前 " + round2(balance));
         }
 
         // 扣款
         if (!eco.withdraw(payer, total)) {
-            return err("扣款失败（请检查经济插件）");
+            return failRecord("BUY", e, name, amount, "扣款失败（请检查经济插件）");
         }
 
         try {
@@ -314,6 +364,7 @@ public final class PurchaseService {
             trade.addProperty("owner", e.owner_name);
             trade.addProperty("online", online);
             plugin.store().addTrade(trade);
+            recordSuccess("BUY", e, name, amount, needItems, unit, total, online);
 
             // 限购计数（+本次数量，与游戏内共用同一计数）
             if (shop != null && plugin.limited().available()) {
@@ -334,7 +385,7 @@ public final class PurchaseService {
                 eco.deposit(payer, total); // 回滚退款
             } catch (Throwable ignored) {
             }
-            return err("交易过程中出错，已自动退款（" + t.getMessage() + "）");
+            return failRecord("BUY", e, name, amount, "交易过程中出错，已自动退款（" + t.getMessage() + "）");
         }
     }
 
@@ -362,10 +413,10 @@ public final class PurchaseService {
     private JsonObject doSell(ShopEntry e, String name, int amount) {
         Player seller = Bukkit.getPlayerExact(name);
         if (seller == null || !seller.isOnline()) {
-            return err("玩家 " + name + " 不在线（在线收购需要玩家在游戏内）");
+            return failRecord("SELL", e, name, amount, "玩家 " + name + " 不在线（在线收购需要玩家在游戏内）");
         }
         EconomyBridge eco = plugin.economy();
-        if (!eco.available()) return err("服务器未安装经济插件（需要 Vault 支持）");
+        if (!eco.available()) return failRecord("SELL", e, name, amount, "服务器未安装经济插件（需要 Vault 支持）");
 
         double unit = e.price;
         double total = round2(unit * amount);
@@ -375,7 +426,7 @@ public final class PurchaseService {
         Inventory chestInv = shop == null ? null : resolveInventory(shop);
 
         ItemStack sample = resolveSample(e, shop, chestInv);
-        if (sample == null) return err("无法确定该商店的物品");
+        if (sample == null) return failRecord("SELL", e, name, amount, "无法确定该商店的物品");
 
         int stack = Math.max(1, e.stacking_amount);
         long needItems = (long) amount * stack;
@@ -384,14 +435,15 @@ public final class PurchaseService {
         int available = countItems(seller.getInventory(), sample);
         if (available < needItems) {
             long canSell = available / stack;
-            return err("背包里没有足够的「" + e.shop_cn_name + "」：当前可卖 " + canSell + " 份（需要 " + needItems + " 个，现有 " + available + " 个）");
+            return failRecord("SELL", e, name, amount,
+                    "背包里没有足够的「" + e.shop_cn_name + "」：当前可卖 " + canSell + " 份（需要 " + needItems + " 个，现有 " + available + " 个）");
         }
 
         // 2) 非系统商店：容器容量（仅容器可访问时检查）+ 店主余额
         OfflinePlayer owner = null;
         if (!e.system_shop) {
             if (chestInv != null && !canFit(chestInv, sample, needItems)) {
-                return err("商店容器已满，暂时无法收购更多");
+                return failRecord("SELL", e, name, amount, "商店容器已满，暂时无法收购更多");
             }
             if (e.owner_uuid != null) {
                 try {
@@ -400,13 +452,13 @@ public final class PurchaseService {
                 }
             }
             if (owner != null && eco.balance(owner) < total) {
-                return err("店主余额不足，无法支付 " + total);
+                return failRecord("SELL", e, name, amount, "店主余额不足，无法支付 " + total);
             }
         }
 
         // 3) 店主扣款（系统商店不扣）
         if (owner != null && !eco.withdraw(owner, total)) {
-            return err("店主扣款失败（请检查经济插件）");
+            return failRecord("SELL", e, name, amount, "店主扣款失败（请检查经济插件）");
         }
 
         try {
@@ -425,7 +477,7 @@ public final class PurchaseService {
                 if (!e.system_shop && chestInv != null) removeItems(chestInv, sample, needItems);
                 deliverItems(seller, sample, needItems);
                 if (owner != null) eco.deposit(owner, total);
-                return err("给你打款失败，交易已取消");
+                return failRecord("SELL", e, name, amount, "给你打款失败，交易已取消");
             }
 
             seller.sendMessage("§a[在线收购] §f成功出售 §e" + amount + "§f 份 §b" + e.shop_cn_name
@@ -450,6 +502,7 @@ public final class PurchaseService {
             trade.addProperty("owner", e.owner_name);
             trade.addProperty("online", true);
             plugin.store().addTrade(trade);
+            recordSuccess("SELL", e, name, amount, needItems, unit, total, true);
 
             JsonObject o = new JsonObject();
             o.addProperty("success", true);
@@ -461,7 +514,7 @@ public final class PurchaseService {
             o.addProperty("message", "出售成功，报酬已到账");
             return o;
         } catch (Throwable t) {
-            return err("交易过程中出错（" + t.getMessage() + "）");
+            return failRecord("SELL", e, name, amount, "交易过程中出错（" + t.getMessage() + "）");
         }
     }
 
@@ -700,5 +753,52 @@ public final class PurchaseService {
         o.addProperty("success", false);
         o.addProperty("error", msg);
         return o;
+    }
+
+    // ============================================================
+    // 订单记录（P0 订单流水）
+    // ============================================================
+
+    /** 记录成功订单 + 经营统计 + 通知；返回订单对象（供调用方复用） */
+    private com.google.gson.JsonObject recordSuccess(String type, ShopEntry e, String name,
+                                                     int amount, long items, double unit, double total, boolean online) {
+        String key = "WEB-" + UUID.randomUUID();
+        com.google.gson.JsonObject order = plugin.orders().recordOrder(key, type, "SUCCESS",
+                e.shop_id, e.shop_cn_name, e.material, amount, items, unit, total, name, e.owner_name, online, null);
+        // 经营统计：失败不计入
+        plugin.stats().record(type, amount, total);
+        // 通知（若配置了 Webhook）
+        if (plugin.notifications().available()) {
+            plugin.notifications().order(type, e.shop_cn_name, amount, total, name);
+        }
+        return order;
+    }
+
+    /** 记录失败订单并返回失败响应（幂等键为 null：每次失败都记一条，便于审计失败原因） */
+    private JsonObject failRecord(String type, ShopEntry e, String name, int amount, String reason) {
+        try {
+            long items = (long) amount * Math.max(1, e.stacking_amount);
+            plugin.orders().recordOrder(null, type, "FAILED",
+                    e.shop_id, e.shop_cn_name, e.material, amount, items, e.price, round2(e.price * amount),
+                    name, e.owner_name, false, reason);
+        } catch (Throwable ignored) {
+        }
+        return err(reason);
+    }
+
+    /** 读取某商店容器内该物品的件数（null = 容器不可访问 / 系统商店）；用于网页「监控」页实时库存 */
+    public Long stockOf(cn.aqcraft.data.ShopEntry e) {
+        try {
+            if (e == null || e.system_shop) return null;
+            long id = parseLong(e.shop_id);
+            Object shop = id > 0 ? plugin.bridge().getShopById(id) : null;
+            org.bukkit.inventory.Inventory chestInv = shop == null ? null : resolveInventory(shop);
+            if (chestInv == null) return null;
+            ItemStack sample = resolveSample(e, shop, chestInv);
+            if (sample == null) return null;
+            return (long) countItems(chestInv, sample);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 }

@@ -54,6 +54,22 @@ public final class GameCodeService {
         return true;
     }
 
+    /** 只校验验证码是否有效且属于该玩家，不消费（用于订单查询等只读场景）。校验失败不扣尝试次数。 */
+    public boolean check(String playerName, String code) {
+        if (playerName == null || code == null) return false;
+        for (Map.Entry<UUID, Entry> candidate : entries.entrySet()) {
+            OfflinePlayer player = Bukkit.getOfflinePlayer(candidate.getKey());
+            if (player.getName() != null && player.getName().equalsIgnoreCase(playerName.trim())) {
+                Entry entry = candidate.getValue();
+                if (entry != null && System.currentTimeMillis() <= entry.expiresAt
+                        && entry.code.equals(code.trim())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static final class Entry {
         private final String code;
         private final long expiresAt;

@@ -1,11 +1,13 @@
 package cn.aqcraft;
 
+import cn.aqcraft.api.QShopWebUIAPI;
 import cn.aqcraft.auth.SessionManager;
 import cn.aqcraft.auth.GameCodeService;
 import cn.aqcraft.bridge.AuthMeBridge;
 import cn.aqcraft.bridge.EconomyBridge;
 import cn.aqcraft.bridge.LimitedBridge;
 import cn.aqcraft.bridge.QuickShopBridge;
+import cn.aqcraft.data.FavoritesStore;
 import cn.aqcraft.data.RequestStats;
 import cn.aqcraft.data.ShopDataService;
 import cn.aqcraft.data.WebStore;
@@ -14,7 +16,14 @@ import cn.aqcraft.listener.GameTradeListener;
 import cn.aqcraft.listener.PurchaseJoinListener;
 import cn.aqcraft.listener.ShopDataListener;
 import cn.aqcraft.listener.ShopRemovalListener;
+import cn.aqcraft.notify.NotificationService;
+import cn.aqcraft.order.OrderStore;
 import cn.aqcraft.purchase.PurchaseService;
+import cn.aqcraft.service.AuditService;
+import cn.aqcraft.service.BusinessStatsService;
+import cn.aqcraft.service.ComparisonService;
+import cn.aqcraft.service.ShopStatusService;
+import cn.aqcraft.service.StockAlertService;
 import cn.aqcraft.util.Materials;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -52,6 +61,15 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private AuthMeBridge authme;
     private LimitedBridge limited;
     private GameCodeService gameCodes;
+    private OrderStore orderStore;
+    private StockAlertService stockAlerts;
+    private ShopStatusService shopStatus;
+    private AuditService audit;
+    private BusinessStatsService bizStats;
+    private ComparisonService comparison;
+    private FavoritesStore favorites;
+    private NotificationService notifications;
+    private cn.aqcraft.api.QShopWebUIAPI qsapi;
 
     // ============================================================
     // 生命周期
@@ -85,6 +103,17 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         authme.reload();
         limited = new LimitedBridge(this);
         limited.reload();
+
+        orderStore = new OrderStore(this);
+        orderStore.load();
+        stockAlerts = new StockAlertService(this);
+        shopStatus = new ShopStatusService(this);
+        audit = new AuditService(this);
+        bizStats = new BusinessStatsService(this);
+        comparison = new ComparisonService();
+        favorites = new FavoritesStore(this);
+        notifications = new NotificationService(this);
+
         getServer().getPluginManager().registerEvents(new PurchaseJoinListener(this), this);
         GameTradeListener.register(this);
         ShopRemovalListener.register(this);
@@ -131,6 +160,11 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
             } catch (Throwable ignored) {
             }
         }
+        if (orderStore != null) orderStore.flush();
+        if (audit != null) audit.flush();
+        if (bizStats != null) bizStats.flush();
+        if (shopStatus != null) shopStatus.flush();
+        if (favorites != null) favorites.flush();
         getLogger().info("QShopWebUI 已停用");
     }
 
@@ -282,6 +316,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         economy.reload();
         if (authme != null) authme.reload();
         if (limited != null) limited.reload();
+        if (notifications != null) notifications.applyConfig();
         stopWeb();
         startWeb();
     }
@@ -358,6 +393,44 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public GameCodeService gameCodes() {
         return gameCodes;
+    }
+
+    public OrderStore orders() {
+        return orderStore;
+    }
+
+    public StockAlertService stockAlerts() {
+        return stockAlerts;
+    }
+
+    public ShopStatusService shopStatus() {
+        return shopStatus;
+    }
+
+    public AuditService audit() {
+        return audit;
+    }
+
+    public BusinessStatsService stats() {
+        return bizStats;
+    }
+
+    public ComparisonService comparison() {
+        return comparison;
+    }
+
+    public FavoritesStore favorites() {
+        return favorites;
+    }
+
+    public NotificationService notifications() {
+        return notifications;
+    }
+
+    /** 供其他插件获取公开扩展 API（开发附属插件用）。 */
+    public cn.aqcraft.api.QShopWebUIAPI getAPI() {
+        if (qsapi == null) qsapi = new cn.aqcraft.api.QShopWebUIImpl(this);
+        return qsapi;
     }
 
     /** 网页修改密码后刷新内存中的配置 */
