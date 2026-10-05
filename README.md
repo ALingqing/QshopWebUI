@@ -271,7 +271,7 @@ node tools/verify-jar.mjs
 
 1. 在 `dev` 分支把 `pom.xml` 与 `plugin.yml` 的版本改成 `1.1.0-beta.1`；下一个测试版递增为 `1.1.0-beta.2`，以此类推。
 2. 提交并推送到 `dev`。
-3. 工作流检测到 `v1.1.0-beta.1` 还不存在，自动构建并创建**预发布（Pre-release）**：标题 `qsweb 1.1.0-beta.1（测试版）`，附件 `qsweb-1.1.0-beta.1.jar`。预发布不会成为 Releases 页面的 Latest，不影响正式版用户。
+3. 工作流检测到 `v1.1.0-beta.1` 还不存在，自动构建并创建**预发布（Pre-release）**：标题 `QShopWebUI 1.1.0-beta.1（测试版）`，附件 `QShopWebUI-1.1.0-beta.1.jar`。预发布不会成为 Releases 页面的 Latest，不影响正式版用户。
 4. `dev` 分支使用不带 `-` 的正式版本号时不会发行；要发正式版请合并到 `main` 后操作。
 
 习惯手动打标签也可以：在 `dev` 上执行 `git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1` 会直接触发发行（标签需与 `pom.xml` 版本一致）；也可以在 Actions 页面选择 Release 工作流、目标分支选 `dev` 手动运行。
