@@ -670,6 +670,14 @@
     } catch (e) { }
   }
 
+  //  插件版本号：显示在导航栏 Logo 旁（来源：/api/health 返回的 plugin.yml 版本）
+  function applyVersion(version) {
+    try {
+      const badge = document.getElementById('app-version');
+      if (badge && version) badge.textContent = 'v' + version;
+    } catch (e) { }
+  }
+
   //  页面可见性：config.yml pages.hide-* 为默认，网页后台「数据管理」可覆盖
   let hiddenPages = [];
   const PAGE_LABELS = { home: '首页', buy: '购买界面', sell: '收购界面', browse: '物品浏览', shops: '商店浏览', stats: '信息统计' };
@@ -2296,8 +2304,14 @@
         if (p.style.display === 'none') continue;
         const t = p.dataset.tab;
         if (t === 'buy' || t === 'sell') {
+          const oldSearch = p.querySelector('.filter-input');
+          const oldSort = p.querySelector('.filter-select');
+          const pageState = {
+            search: oldSearch ? oldSearch.value : '',
+            sort: oldSort ? oldSort.value : ''
+          };
           p.innerHTML = '';
-          renderIntoPanel(p, function () { return t === 'buy' ? initBuyPage() : initSellPage(); });
+          renderIntoPanel(p, function () { return t === 'buy' ? initBuyPage(pageState) : initSellPage(pageState); });
         }
         break;
       }
@@ -2305,7 +2319,7 @@
   }
 
   // 交易页公共骨架（购买/收购共用）：搜索 + 排序 + 分页 + 商店卡片网格
-  async function initTradePage(pageKey, shopType, title, subtitle, emptyText) {
+  async function initTradePage(pageKey, shopType, title, subtitle, emptyText, initialState) {
     const root = ensureTabPanel(pageKey);
     if (!root) return;
     root.innerHTML = '';
@@ -2320,6 +2334,10 @@
     [['price_asc', '价格低→高'], ['price_desc', '价格高→低'], ['newest', '最新']].forEach(function (o) {
       sortSelect.appendChild(el('option', { value: o[0], text: o[1] }));
     });
+    if (initialState) {
+      searchInput.value = initialState.search || '';
+      if (initialState.sort) sortSelect.value = initialState.sort;
+    }
     const refreshBtn = el('button', { class: 'neo-btn', text: '刷新' });
     toolbar.appendChild(searchInput);
     toolbar.appendChild(sortSelect);
@@ -2373,13 +2391,13 @@
   }
 
   //  购买界面（玩家视角：浏览出售商店并购买）
-  function initBuyPage() {
-    return initTradePage('buy', 'SELLING', '🛒 购买界面', '服务器上所有出售商店 · 填写游戏 ID 直接购买（离线玩家上线时自动发放）', '没有找到出售中的商店');
+  function initBuyPage(initialState) {
+    return initTradePage('buy', 'SELLING', '🛒 购买界面', '服务器上所有出售商店 · 填写游戏 ID 直接购买（离线玩家上线时自动发放）', '没有找到出售中的商店', initialState);
   }
 
   //  收购界面（玩家视角：把物品卖给收购商店）
-  function initSellPage() {
-    return initTradePage('sell', 'BUYING', '💰 收购界面', '服务器上所有收购商店 · 把背包里的物品卖给他们（玩家需在游戏中）', '没有找到收购中的商店');
+  function initSellPage(initialState) {
+    return initTradePage('sell', 'BUYING', '💰 收购界面', '服务器上所有收购商店 · 把背包里的物品卖给他们（玩家需在游戏中）', '没有找到收购中的商店', initialState);
   }
 
   //  在线出售弹窗（卖给收购商店，报酬到账，物品从背包扣除）
@@ -3625,6 +3643,7 @@
         if (h.server_name) siteServerName = String(h.server_name);
         if (h.server_subtitle) siteServerSubtitle = String(h.server_subtitle);
         applySiteBrand();
+        applyVersion(h.version);
       }
     }).catch(function () { });
 

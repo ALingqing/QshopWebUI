@@ -229,7 +229,7 @@ password: sha256:<64位十六进制摘要>
 mvn clean package
 ```
 
-产物：`target/QShopWebUI-1.0.0.jar`。
+产物：`target/QShopWebUI-1.0.1.jar`。
 
 构建请带上 `clean`：否则可能把编辑器（VS Code / IDEA）增量编译到 `target/classes` 的旧产物直接打进 jar。
 

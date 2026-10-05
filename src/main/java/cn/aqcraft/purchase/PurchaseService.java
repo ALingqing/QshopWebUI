@@ -547,6 +547,15 @@ public final class PurchaseService {
 
     private Inventory resolveInventory(Object shop) {
         try {
+            // 优先使用 QuickShop 提供的库存接口；部分版本的商店方块位置并不是实际容器位置。
+            for (String method : new String[]{"getInventory", "getContainerInventory", "getStorageInventory"}) {
+                Object direct = QuickShopBridge.unwrap(QuickShopBridge.call(shop, method));
+                if (direct instanceof Inventory) return (Inventory) direct;
+                if (direct instanceof org.bukkit.inventory.InventoryHolder) {
+                    Inventory inv = ((org.bukkit.inventory.InventoryHolder) direct).getInventory();
+                    if (inv != null) return inv;
+                }
+            }
             Object loc = QuickShopBridge.unwrap(QuickShopBridge.call(shop, "getLocation", "bukkitLocation"));
             if (!(loc instanceof Location)) return null;
             Location l = (Location) loc;

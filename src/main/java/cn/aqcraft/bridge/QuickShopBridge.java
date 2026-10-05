@@ -245,45 +245,52 @@ public final class QuickShopBridge {
     public String setShopType(Object shop, String type) {
         if (!available) return "QuickShop 未连接";
         try {
-            // 1) 从 shopManager 找 IShopType 对象
+            String requested = type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
+            if (!"BUYING".equals(requested) && !"SELLING".equals(requested)) {
+                return "无效的商店类型: " + type;
+            }
+
+            // 1) 按请求的类型从 shopManager 获取 IShopType 对象。
+            // 旧代码调用了无参 shopType()，拿到的是默认类型，导致切换后实际类型未改变。
             Object typeObj = null;
-            for (String cand : new String[]{type, type.toLowerCase(Locale.ROOT)}) {
-                Object o = call(shopManager, "shopType", "shopTypeOrDefault");
-                if (o == null) {
-                    // 带参数调用：shopManager.shopType(String)
-                    for (Method m : methods(shopManager, "shopType")) {
-                        if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == String.class) {
-                            try {
-                                o = unwrap(m.invoke(shopManager, cand));
-                            } catch (Throwable ignored) {
-                            }
+            for (String cand : new String[]{requested, requested.toLowerCase(Locale.ROOT)}) {
+                for (Method m : methods(shopManager, "shopType", "shopTypeOrDefault")) {
+                    if (m.getParameterCount() != 1 || m.getParameterTypes()[0] != String.class) continue;
+                    try {
+                        Object o = unwrap(m.invoke(shopManager, cand));
+                        if (o != null) {
+                            typeObj = o;
+                            break;
                         }
+                    } catch (Throwable ignored) {
                     }
                 }
-                if (o != null) {
-                    typeObj = o;
-                    break;
-                }
+                if (typeObj != null) break;
             }
             final Object finalType = typeObj;
             if (finalType == null) {
                 // 5.x 可能支持字符串直接设置
-                String r = invokeSingleArg(shop, type, "setShopType");
+                String r = invokeSingleArg(shop, requested, "setShopType");
                 return r == null ? null : "当前 QuickShop 版本不支持修改商店类型";
             }
-            runOnMain(() -> {
+
+            String result = runOnMain(() -> {
+                boolean invoked = false;
                 for (Method m : methods(shop, "shopType", "setShopType")) {
                     if (m.getParameterCount() == 1) {
                         try {
                             m.invoke(shop, finalType);
-                            return null;
+                            invoked = true;
+                            break;
                         } catch (Throwable ignored) {
                         }
                     }
                 }
-                return null;
+                return invoked ? null : "当前 QuickShop 版本不支持修改商店类型";
             });
-            return null;
+            if (result != null) return result;
+            String actual = resolveShopType(shop);
+            return requested.equalsIgnoreCase(actual) ? null : "QuickShop 未确认商店类型已切换为 " + requested;
         } catch (Throwable t) {
             return "修改类型失败: " + rootMessage(t);
         }

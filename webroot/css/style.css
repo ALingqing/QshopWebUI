@@ -1725,6 +1725,26 @@ input, select, textarea {
   margin-right: 5px;
 }
 
+/* 插件版本号徽章（导航栏 Logo 旁，由 /api/health 动态填充） */
+.app-version {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: #fff;
+  background: var(--primary);
+  border: 2px solid #000;
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 #000;
+  vertical-align: middle;
+  user-select: none;
+}
+.app-version:empty {
+  display: none;
+}
+
 .topnav-tabs {
   display: flex;
   gap: 8px;

@@ -8,8 +8,8 @@ fs.rmSync(dst, { recursive: true, force: true });
 fs.mkdirSync(dst, { recursive: true });
 
 // 1. jar
-const jarSrc = path.join(root, 'target', 'QShopWebUI-1.0.0.jar');
-fs.copyFileSync(jarSrc, path.join(dst, 'QShopWebUI-1.0.0.jar'));
+const jarSrc = path.join(root, 'target', 'QShopWebUI-1.0.1.jar');
+fs.copyFileSync(jarSrc, path.join(dst, 'QShopWebUI-1.0.1.jar'));
 console.log('✓ jar:', (fs.statSync(jarSrc).size / 1024 / 1024).toFixed(2), 'MB');
 
 // 2. config.yml（预填清屿在线商店）
@@ -44,7 +44,7 @@ QuickShop-Hikari 商店的网页系统（Paper 插件）：
 - 网页直接读取游戏内 QuickShop 数据，无需数据库，单端口即可运行
 
 【文件说明】
-  QShopWebUI-1.0.0.jar  插件本体（放进服务器 plugins 文件夹）
+  QShopWebUI-1.0.1.jar  插件本体（放进服务器 plugins 文件夹）
   config.yml            已填好「清屿在线商店」的配置示例
   web/index.html        定制版首页（标题/Logo = 清屿在线商店，磁盘覆盖用）
   README.md             完整功能与配置文档
@@ -52,7 +52,7 @@ QuickShop-Hikari 商店的网页系统（Paper 插件）：
 【安装步骤】
 1. 要求：服务器的 Java 17+，已安装 QuickShop-Hikari
    （在线购买/收购还需要 Vault + 经济插件，如 EssentialsX）
-2. 把 QShopWebUI-1.0.0.jar 放进服务器 plugins/ 目录，重启服务器
+2. 把 QShopWebUI-1.0.1.jar 放进服务器 plugins/ 目录，重启服务器
 3. 首次启动会生成 plugins/QShopWebUI/config.yml
    （想用「清屿在线商店」名称：把本包里的 config.yml 复制过去覆盖即可）
 4. 【可选】自定义网站：把本包的 web 文件夹（整个）复制到
