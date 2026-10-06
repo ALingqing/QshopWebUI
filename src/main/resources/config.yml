@@ -71,6 +71,10 @@ purchase:
   # 玩家在游戏内执行 /qshopwebui code 后，将验证码填入网页。
   game-code-ttl-seconds: 300
   game-code-max-attempts: 5
+  # 玩家登录一次后，在该时间（秒）内交易 / 查询免重复验证（默认 1800 = 30 分钟）。
+  player-session-ttl-seconds: 1800
+  # 是否允许玩家用 AuthMe 密码登录（需服务器已安装 AuthMe；关闭后只能使用游戏内验证码）。
+  allow-authme-login: true
 
 # ------------------------------------------------------------
 # 库存与经营（P1/P2 增强）

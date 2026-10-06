@@ -36,6 +36,10 @@ public final class PluginConfig {
     public boolean allowOfflineBuy = true;
     public int gameCodeTtlSeconds = 300;
     public int gameCodeMaxAttempts = 5;
+    /** 玩家网页登录会话有效期（秒）：登录一次后交易免重复验证。 */
+    public int playerSessionTtlSeconds = 1800;
+    /** 是否允许用 AuthMe 密码登录（需服务器安装 AuthMe）。 */
+    public boolean allowAuthmeLogin = true;
 
     // === P1/P2 增强功能 ===
     /** 库存/收购容量提醒阈值（出售店剩余物品数低于此值告警） */
@@ -90,6 +94,8 @@ public final class PluginConfig {
         cfg.allowOfflineBuy = c.getBoolean("purchase.allow-offline-buy", true);
         cfg.gameCodeTtlSeconds = Math.max(30, c.getInt("purchase.game-code-ttl-seconds", 300));
         cfg.gameCodeMaxAttempts = Math.max(1, c.getInt("purchase.game-code-max-attempts", 5));
+        cfg.playerSessionTtlSeconds = Math.max(60, c.getInt("purchase.player-session-ttl-seconds", 1800));
+        cfg.allowAuthmeLogin = c.getBoolean("purchase.allow-authme-login", true);
         cfg.stockLowThreshold = c.getInt("shop.stock-low-threshold", 10);
         cfg.alertCooldownMs = Math.max(1000, c.getLong("shop.alert-cooldown-ms", 5 * 60 * 1000));
         cfg.circuitBreakerThreshold = Math.max(1, c.getInt("shop.circuit-breaker-threshold", 8));

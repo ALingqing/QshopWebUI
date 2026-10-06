@@ -46,6 +46,8 @@
 | `purchase.allow-offline-buy` | false | 是否允许离线购买 |
 | `purchase.game-code-ttl-seconds` | 300 | 验证码有效期 |
 | `purchase.game-code-max-attempts` | 5 | 验证码最大尝试次数 |
+| `purchase.player-session-ttl-seconds` | 1800 | 玩家登录会话有效期（秒）：登录一次后交易免重复验证 |
+| `purchase.allow-authme-login` | true | 是否允许用 AuthMe 密码登录（需服务器安装 AuthMe） |
 
 ### 商店
 
@@ -72,7 +74,7 @@
 | 命令 | 权限 | 说明 |
 |------|------|------|
 | `/qshopwebui` | 默认 | 主命令 |
-| `/qshopwebui code` | 所有玩家 | 生成游戏内一次性验证码（网页交易/查单/收藏用） |
+| `/qshopwebui code` | 所有玩家 | 生成游戏内一次性验证码（网页交易/查单/收藏用；也可用 AuthMe 密码登录免重复验证） |
 | `/qshopwebui reload` | qshopwebui.reload | 重载配置与数据 |
 | `/qshopwebui status` | qshopwebui.reload | 查看运行状态 |
 

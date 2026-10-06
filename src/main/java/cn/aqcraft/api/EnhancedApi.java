@@ -41,15 +41,16 @@ public final class EnhancedApi extends ApiBase {
         return HttpResponse.json(o);
     }
 
-    /** GET /api/orders/me 玩家自助查询（需 player + code 验证码） */
+    /** GET /api/orders/me 玩家自助查询（需 player + code 验证码 或 token 会话） */
     public HttpResponse myOrders(HttpRequest req) {
         String player = req.param("player", "");
         String code = req.param("code", "");
-        if (player.isEmpty() || code.isEmpty()) {
-            return HttpResponse.error(400, "需要 player 与 code（游戏内 /qshopwebui code 生成）");
+        String token = req.param("token", "");
+        if (player.isEmpty() || (code.isEmpty() && token.isEmpty())) {
+            return HttpResponse.error(400, "需要 player 与 code（游戏内 /qshopwebui code 生成）或已登录 token");
         }
-        if (!plugin.gameCodes().check(player, code)) {
-            return HttpResponse.error(403, "验证码无效或已过期");
+        if (!plugin.playerAuth().verify(player, code, token)) {
+            return HttpResponse.error(403, "验证码无效或已过期（也可登录后使用 token）");
         }
         String type = req.param("type", null);
         int limit = req.intParam("limit", 20);
@@ -116,15 +117,16 @@ public final class EnhancedApi extends ApiBase {
     // 收藏
     // ============================================================
 
-    /** GET /api/favorites?player=xxx&code=xxx 玩家收藏列表 */
+    /** GET /api/favorites?player=xxx&code=xxx&token=xxx 玩家收藏列表 */
     public HttpResponse favoritesList(HttpRequest req) {
         String player = req.param("player", "");
         String code = req.param("code", "");
-        if (player.isEmpty() || code.isEmpty()) {
-            return HttpResponse.error(400, "需要 player 与 code");
+        String token = req.param("token", "");
+        if (player.isEmpty() || (code.isEmpty() && token.isEmpty())) {
+            return HttpResponse.error(400, "需要 player 与 code（或已登录 token）");
         }
-        if (!plugin.gameCodes().check(player, code)) {
-            return HttpResponse.error(403, "验证码无效或已过期");
+        if (!plugin.playerAuth().verify(player, code, token)) {
+            return HttpResponse.error(403, "验证码无效或已过期（也可登录后使用 token）");
         }
         List<String> ids = plugin.favorites().favorites(player);
         JsonArray shops = new JsonArray();
@@ -153,17 +155,18 @@ public final class EnhancedApi extends ApiBase {
         return HttpResponse.json(o);
     }
 
-    /** POST /api/favorites/toggle 添加/移除收藏（body: player, code, shop_id） */
+    /** POST /api/favorites/toggle 添加/移除收藏（body: player, code|token, shop_id） */
     public HttpResponse favoritesToggle(HttpRequest req) {
         JsonObject b = body(req);
         String player = jstr(b, "player", "");
         String code = jstr(b, "code", "");
+        String token = jstr(b, "token", "");
         String shopId = jstr(b, "shop_id", "");
-        if (player.isEmpty() || code.isEmpty() || shopId.isEmpty()) {
-            return HttpResponse.error(400, "需要 player、code、shop_id");
+        if (player.isEmpty() || (code.isEmpty() && token.isEmpty()) || shopId.isEmpty()) {
+            return HttpResponse.error(400, "需要 player、code（或 token）、shop_id");
         }
-        if (!plugin.gameCodes().check(player, code)) {
-            return HttpResponse.error(403, "验证码无效或已过期");
+        if (!plugin.playerAuth().verify(player, code, token)) {
+            return HttpResponse.error(403, "验证码无效或已过期（也可登录后使用 token）");
         }
         boolean now = plugin.favorites().toggle(player, shopId);
         plugin.favorites().flush();

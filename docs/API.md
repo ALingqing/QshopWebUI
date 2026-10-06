@@ -54,14 +54,29 @@ QShopWebUIAPI api =
 
 基础 URL：`http://<host>:<port>/api/...`。管理端端点需要 `requireAuth` 开启时
 携带会话 Cookie；玩家自助端点使用 `player + code`（游戏内 `/qshopwebui code`
-生成的一次性验证码）鉴权。
+生成的一次性验证码）或 **登录会话 token** 鉴权。
+
+### 玩家登录（免重复验证码）
+
+玩家可用「游戏内一次性验证码」或「AuthMe 密码」登录一次，登录后在
+`purchase.player-session-ttl-seconds` 内交易 / 查询免重复验证。
+
+| 端点 | 方法 | 鉴权 | 说明 |
+|------|------|------|------|
+| `/api/player/login` | POST | 公开 | body: `{player, code}` 或 `{player, password}`；成功返回 `{token, method, ttl}` |
+| `/api/player/logout` | POST | 公开 | body: `{player, token}` 清除会话 |
+| `/api/player/session?player=&token=` | GET | 公开 | 检查会话是否有效；返回 `logged_in`/`authme_available`/`allow_password_login` |
+| `/api/purchase` | POST | 玩家 | body: `{shop_id, player, amount, code\|password\|token}` |
+| `/api/sell` | POST | 玩家 | body: `{shop_id, player, amount, code\|password\|token}` |
+
+> 交易响应会附带 `auth_token` / `auth_method`，前端保存后可后续免验证调用。
 
 ### 订单
 
 | 端点 | 方法 | 鉴权 | 说明 |
 |------|------|------|------|
 | `/api/orders?type=&player=&limit=&offset=` | GET | 管理 | 全部订单分页（时间倒序） |
-| `/api/orders/me?player=&code=&type=&limit=&offset=` | GET | 玩家 | 我的订单 |
+| `/api/orders/me?player=&code=&token=&type=&limit=&offset=` | GET | 玩家 | 我的订单 |
 | `/api/orders/{id}` | GET | 管理 | 单笔订单 |
 | `/api/orders/clear` | POST | 管理 | 清空订单 |
 
@@ -76,8 +91,8 @@ QShopWebUIAPI api =
 
 | 端点 | 方法 | 鉴权 | 说明 |
 |------|------|------|------|
-| `/api/favorites?player=&code=` | GET | 玩家 | 收藏列表 |
-| `/api/favorites/toggle` | POST | 玩家 | body: `{player,code,shop_id}` |
+| `/api/favorites?player=&code=&token=` | GET | 玩家 | 收藏列表 |
+| `/api/favorites/toggle` | POST | 玩家 | body: `{player,code\|token,shop_id}` |
 
 ### 经营统计 / 审计
 

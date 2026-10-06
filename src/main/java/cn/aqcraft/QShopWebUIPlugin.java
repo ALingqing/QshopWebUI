@@ -3,6 +3,7 @@ package cn.aqcraft;
 import cn.aqcraft.api.QShopWebUIAPI;
 import cn.aqcraft.auth.SessionManager;
 import cn.aqcraft.auth.GameCodeService;
+import cn.aqcraft.auth.PlayerAuthService;
 import cn.aqcraft.bridge.AuthMeBridge;
 import cn.aqcraft.bridge.EconomyBridge;
 import cn.aqcraft.bridge.LimitedBridge;
@@ -61,6 +62,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private AuthMeBridge authme;
     private LimitedBridge limited;
     private GameCodeService gameCodes;
+    private PlayerAuthService playerAuth;
     private OrderStore orderStore;
     private StockAlertService stockAlerts;
     private ShopStatusService shopStatus;
@@ -97,6 +99,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         economy = new EconomyBridge(this);
         economy.reload();
         purchases = new PurchaseService(this);
+        playerAuth = new PlayerAuthService(this);
         gameCodes = new GameCodeService(this);
 
         authme = new AuthMeBridge(this);
@@ -393,6 +396,10 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public GameCodeService gameCodes() {
         return gameCodes;
+    }
+
+    public PlayerAuthService playerAuth() {
+        return playerAuth;
     }
 
     public OrderStore orders() {

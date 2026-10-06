@@ -2,6 +2,7 @@ package cn.aqcraft.purchase;
 
 import com.google.gson.JsonObject;
 import cn.aqcraft.QShopWebUIPlugin;
+import cn.aqcraft.auth.PlayerAuthService;
 import cn.aqcraft.bridge.EconomyBridge;
 import cn.aqcraft.bridge.LimitedBridge;
 import cn.aqcraft.bridge.QuickShopBridge;
@@ -37,7 +38,7 @@ public final class PurchaseService {
         this.plugin = plugin;
     }
 
-    public JsonObject purchase(String shopId, String playerName, int amount, String code) {
+    public JsonObject purchase(String shopId, String playerName, int amount, String code, String password, String token) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
         if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
         final String name = playerName.trim();
@@ -50,7 +51,9 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
-        if (!plugin.gameCodes().verifyAndConsume(name, code)) return err("验证码无效、已过期或玩家不在线，请在游戏内执行 /qshopwebui code");
+        // 登录认证：有效会话 / 游戏内验证码 / AuthMe 密码（三选一）
+        PlayerAuthService.Result auth = plugin.playerAuth().authenticate(name, code, password, token);
+        if (!auth.ok) return err(auth.reason);
 
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
@@ -65,14 +68,16 @@ public final class PurchaseService {
 
         final ShopEntry entry = found;
         try {
-            return plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt));
+            JsonObject r = plugin.bridge().runOnMain(() -> doPurchase(entry, name, amt));
+            attachAuth(r, auth);
+            return r;
         } catch (Throwable t) {
             return failRecord("BUY", entry, name, amt, "交易执行失败: " + t.getMessage());
         }
     }
 
     /** 玩家出售给收购商店（网页收购界面） */
-    public JsonObject sell(String shopId, String playerName, int amount, String code) {
+    public JsonObject sell(String shopId, String playerName, int amount, String code, String password, String token) {
         if (shopId == null || shopId.trim().isEmpty()) return err("缺少商店 ID");
         if (playerName == null || playerName.trim().isEmpty()) return err("请输入你的游戏 ID");
         final String name = playerName.trim();
@@ -84,7 +89,9 @@ public final class PurchaseService {
         if (last != null && now - last < 1500) return err("操作太快，请稍后再试");
         cooldown.put(name.toLowerCase(Locale.ROOT), now);
 
-        if (!plugin.gameCodes().verifyAndConsume(name, code)) return err("验证码无效、已过期或玩家不在线，请在游戏内执行 /qshopwebui code");
+        // 登录认证：有效会话 / 游戏内验证码 / AuthMe 密码（三选一）
+        PlayerAuthService.Result auth = plugin.playerAuth().authenticate(name, code, password, token);
+        if (!auth.ok) return err(auth.reason);
 
         ShopEntry found = null;
         for (ShopEntry s : plugin.shopData().shops()) {
@@ -99,10 +106,19 @@ public final class PurchaseService {
 
         final ShopEntry entry = found;
         try {
-            return plugin.bridge().runOnMain(() -> doSell(entry, name, amt));
+            JsonObject r = plugin.bridge().runOnMain(() -> doSell(entry, name, amt));
+            attachAuth(r, auth);
+            return r;
         } catch (Throwable t) {
             return failRecord("SELL", entry, name, amt, "交易执行失败: " + t.getMessage());
         }
+    }
+
+    /** 把认证方式与新生成的 token 附加到响应，便于前端保存会话。 */
+    private static void attachAuth(JsonObject o, PlayerAuthService.Result auth) {
+        if (o == null || auth == null) return;
+        if (auth.token != null) o.addProperty("auth_token", auth.token);
+        if (auth.method != null) o.addProperty("auth_method", auth.method);
     }
 
     /** 查询在线玩家背包中该商店物品的数量（收购界面「最大」按钮用） */

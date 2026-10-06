@@ -179,6 +179,13 @@ public final class ApiRouter {
             case "/api/sell":
                 return purchaseApi.sell(req);
 
+            case "/api/player/login":
+                return purchaseApi.playerLogin(req);
+            case "/api/player/logout":
+                return purchaseApi.playerLogout(req);
+            case "/api/player/session":
+                return purchaseApi.playerSession(req);
+
             case "/api/inventory-check":
                 return purchaseApi.inventoryCheck(req);
 

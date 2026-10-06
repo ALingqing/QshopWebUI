@@ -2141,7 +2141,46 @@
     return card;
   }
 
-  //  在线购买弹窗（填游戏 ID + 游戏内一次性验证码购买）
+  //  构建玩家「验证方式」区块：已登录（同名会话）时显示状态并免验证；
+  //  未登录时显示「游戏内验证码」与「AuthMe 密码」两种方式（二选一）。
+  function buildPlayerAuthFields(getName) {
+    const codeInput = el('input', { type: 'text', inputmode: 'numeric', class: 'purchase-input', placeholder: '游戏内验证码（/qshopwebui code）', maxlength: '6', style: { width: '100%' } });
+    const pwdInput = el('input', { type: 'password', class: 'purchase-input', placeholder: 'AuthMe 密码（与验证码二选一）', maxlength: '64', style: { width: '100%' } });
+    const codeWrap = el('div', { class: 'purchase-field' }, [
+      el('label', { class: 'purchase-label', text: '游戏内验证码' }),
+      codeInput
+    ]);
+    const pwdWrap = el('div', { class: 'purchase-field' }, [
+      el('label', { class: 'purchase-label', text: '或 AuthMe 密码' }),
+      pwdInput
+    ]);
+    const statusText = el('div', { style: { fontSize: '13px', fontWeight: '600', color: '#065f46' } });
+    const logoutBtn = el('button', { class: 'neo-btn', text: '退出登录', style: { marginTop: '6px', padding: '6px 12px' } });
+    const loggedWrap = el('div', { class: 'purchase-field' }, [statusText, logoutBtn]);
+    function refresh() {
+      const n = getName();
+      const logged = n && QSDB.isPlayerLoggedIn(n);
+      if (logged) {
+        const s = QSDB.getPlayerSession();
+        const m = s && s.method === 'password' ? '（密码登录）' : (s && s.method === 'code' ? '（验证码登录）' : '');
+        statusText.textContent = '✓ 已登录' + m + '，本次交易免验证';
+        loggedWrap.style.display = '';
+        codeWrap.style.display = 'none';
+        pwdWrap.style.display = 'none';
+      } else {
+        loggedWrap.style.display = 'none';
+        codeWrap.style.display = '';
+        pwdWrap.style.display = '';
+      }
+    }
+    logoutBtn.onclick = function () {
+      QSDB.playerLogout().then(function () { refresh(); Toast.show('已退出登录', 'success'); });
+    };
+    refresh();
+    return { codeInput: codeInput, pwdInput: pwdInput, codeWrap: codeWrap, pwdWrap: pwdWrap, loggedWrap: loggedWrap, refresh: refresh };
+  }
+
+  //  在线购买弹窗（填游戏 ID + 验证方式购买）
   function showPurchaseModal(shop) {
     const unitPrice = Number(shop.price || 0);
     const unitDisplay = (shop.price_display !== undefined && shop.price_display !== null)
@@ -2158,9 +2197,8 @@
       type: 'text', class: 'purchase-input', placeholder: '请输入你的游戏 ID',
       value: savedName, maxlength: '16', style: { width: '100%' }
     });
-    const codeInput = el('input', {
-      type: 'text', inputmode: 'numeric', class: 'purchase-input', placeholder: '游戏内验证码（/qshopwebui code）', maxlength: '6', style: { width: '100%' }
-    });
+    const auth = buildPlayerAuthFields(function () { return nameInput.value.trim(); });
+    nameInput.addEventListener('change', auth.refresh);
     const qtyInput = el('input', {
       type: 'number', class: 'purchase-input purchase-qty', value: '1',
       min: '1', max: '64', style: { width: '110px' }
@@ -2238,10 +2276,9 @@
         el('label', { class: 'purchase-label', text: '游戏 ID' }),
         nameInput
       ]),
-      el('div', { class: 'purchase-field' }, [
-        el('label', { class: 'purchase-label', text: '游戏内验证码' }),
-        codeInput
-      ]),
+      auth.loggedWrap,
+      auth.codeWrap,
+      auth.pwdWrap,
       el('div', { class: 'purchase-field' }, [
         el('label', { class: 'purchase-label', text: '购买份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
         el('div', { style: { display: 'flex', alignItems: 'center' } }, [qtyInput, maxBtn])
@@ -2249,7 +2286,7 @@
       summary,
       balanceInfo,
       limitInfo,
-      el('div', { class: 'purchase-tip', text: '请先在游戏内执行 /qshopwebui code 获取验证码；验证码只可使用一次。在线玩家物品直接放入背包，离线玩家上线时自动发放。' })
+      el('div', { class: 'purchase-tip', text: '游戏内验证码 或 AuthMe 密码 二选一即可；登录一次后短时间内交易免验证。在线玩家物品直接放入背包，离线玩家上线时自动发放。' })
     ]);
 
     let modalRef = null;
@@ -2261,12 +2298,17 @@
         const player = nameInput.value.trim();
         if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
         if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
-        const code = codeInput.value.trim();
-        if (!/^\d{6}$/.test(code)) { Toast.show('请输入 6 位游戏内验证码', 'error'); return false; }
+        const logged = QSDB.isPlayerLoggedIn(player);
+        const code = logged ? '' : auth.codeInput.value.trim();
+        const pwd = logged ? '' : auth.pwdInput.value.trim();
+        if (!logged) {
+          if (!code && !pwd) { Toast.show('请输入游戏内验证码或 AuthMe 密码', 'error'); return false; }
+          if (code && !/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+        }
         if (remainingLimit != null && currentQty() > remainingLimit) { Toast.show('超出限购：本周期最多还能购买 ' + remainingLimit + ' 份', 'error'); return false; }
         const qty = currentQty();
         try { modalRef.setProcessing('处理中...'); } catch (e) { }
-        QSDB.purchaseShop(shop.shop_id, player, qty, code).then(function (r) {
+        QSDB.purchaseShop(shop.shop_id, player, qty, code, pwd).then(function (r) {
           if (r && r.success) {
             try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
             Toast.show('✓ 购买成功：' + r.item + ' ×' + r.amount + ' 份，花费 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
@@ -2425,9 +2467,8 @@
       type: 'text', class: 'purchase-input', placeholder: '请输入你的游戏 ID',
       value: savedName, maxlength: '16', style: { width: '100%' }
     });
-    const codeInput = el('input', {
-      type: 'text', inputmode: 'numeric', class: 'purchase-input', placeholder: '游戏内验证码（/qshopwebui code）', maxlength: '6', style: { width: '100%' }
-    });
+    const auth = buildPlayerAuthFields(function () { return nameInput.value.trim(); });
+    nameInput.addEventListener('change', auth.refresh);
     const qtyInput = el('input', {
       type: 'number', class: 'purchase-input purchase-qty', value: '1',
       min: '1', max: '64', style: { width: '110px' }
@@ -2490,17 +2531,16 @@
         el('label', { class: 'purchase-label', text: '游戏 ID' }),
         nameInput
       ]),
-      el('div', { class: 'purchase-field' }, [
-        el('label', { class: 'purchase-label', text: '游戏内验证码' }),
-        codeInput
-      ]),
+      auth.loggedWrap,
+      auth.codeWrap,
+      auth.pwdWrap,
       el('div', { class: 'purchase-field' }, [
         el('label', { class: 'purchase-label', text: '出售份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
         el('div', { style: { display: 'flex', alignItems: 'center' } }, [qtyInput, maxBtn])
       ]),
       summary,
       balanceInfo,
-      el('div', { class: 'purchase-tip', text: '⚠ 请先在游戏内执行 /qshopwebui code 获取一次性验证码；物品将从你的背包扣除，报酬直接存入你的账户。' + (ownerName ? '' : '（系统商店：无限收购）') })
+      el('div', { class: 'purchase-tip', text: '⚠ 游戏内验证码 或 AuthMe 密码 二选一即可；登录一次后短时间内交易免验证。物品将从你的背包扣除，报酬直接存入你的账户。' + (ownerName ? '' : '（系统商店：无限收购）') })
     ]);
 
     let modalRef = null;
@@ -2512,11 +2552,16 @@
         const player = nameInput.value.trim();
         if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
         if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
-        const code = codeInput.value.trim();
-        if (!/^\d{6}$/.test(code)) { Toast.show('请输入 6 位游戏内验证码', 'error'); return false; }
+        const logged = QSDB.isPlayerLoggedIn(player);
+        const code = logged ? '' : auth.codeInput.value.trim();
+        const pwd = logged ? '' : auth.pwdInput.value.trim();
+        if (!logged) {
+          if (!code && !pwd) { Toast.show('请输入游戏内验证码或 AuthMe 密码', 'error'); return false; }
+          if (code && !/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+        }
         const qty = currentQty();
         try { modalRef.setProcessing('处理中...'); } catch (e) { }
-        QSDB.sellShop(shop.shop_id, player, qty, code).then(function (r) {
+        QSDB.sellShop(shop.shop_id, player, qty, code, pwd).then(function (r) {
           if (r && r.success) {
             try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
             Toast.show('✓ 出售成功：' + r.item + ' ×' + r.amount + ' 份，获得 $' + r.total_price + '，余额 $' + r.balance_left, 'success');

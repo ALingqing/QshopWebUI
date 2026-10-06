@@ -7,7 +7,8 @@
 | 功能 | 说明 | 服务 |
 |------|------|------|
 | 订单流水 | 每笔成功/失败交易写入独立订单流水（ORD-序号），独立于 trades.json | `OrderStore` |
-| 玩家订单查询 | 玩家凭游戏内一次性验证码查询自己的买卖记录 | `EnhancedApi.myOrders` |
+| 玩家订单查询 | 玩家凭游戏内一次性验证码（或登录会话 token）查询自己的买卖记录 | `EnhancedApi.myOrders` |
+| 玩家登录（免重复验证码） | 游戏内验证码 或 AuthMe 密码登录一次，TTL 内交易/查询免重复验证 | `PlayerAuthService` / `/api/player/login` |
 | 网页购买 / 出售 | 玩家在线或允许离线时通过网页交易 | `PurchaseService` |
 
 ## P1 经营增强
