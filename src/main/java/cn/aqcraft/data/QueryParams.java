@@ -10,6 +10,8 @@ public final class QueryParams {
     public Double minPrice = null;
     public Double maxPrice = null;
     public String sort = "";
+    /** 商店类型筛选：""=全部，infinite=无限商店，system=管理员(系统)商店，player=玩家商店 */
+    public String filter = "";
     public int page = 1;
     public int pageSize = 30;
     /** null = 未传（显示所有）；false = 仅显示价格合理的 */

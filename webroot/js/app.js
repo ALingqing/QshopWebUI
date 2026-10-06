@@ -2141,22 +2141,44 @@
     return card;
   }
 
-  //  构建玩家「验证方式」区块：已登录（同名会话）时显示状态并免验证；
-  //  未登录时显示「游戏内验证码」与「AuthMe 密码」两种方式（二选一）。
+  //  构建玩家「验证方式」区块：顶部二选一（游戏内验证码 / AuthMe 密码），下方为对应输入框；
+  //  已登录（同名会话）时改为显示登录状态并免验证。
   function buildPlayerAuthFields(getName) {
+    let method = 'code'; // 'code' | 'password'
     const codeInput = el('input', { type: 'text', inputmode: 'numeric', class: 'purchase-input', placeholder: '游戏内验证码（/qshopwebui code）', maxlength: '6', style: { width: '100%' } });
-    const pwdInput = el('input', { type: 'password', class: 'purchase-input', placeholder: 'AuthMe 密码（与验证码二选一）', maxlength: '64', style: { width: '100%' } });
-    const codeWrap = el('div', { class: 'purchase-field' }, [
-      el('label', { class: 'purchase-label', text: '游戏内验证码' }),
-      codeInput
+    const pwdInput = el('input', { type: 'password', class: 'purchase-input', placeholder: 'AuthMe 密码', maxlength: '64', style: { width: '100%' } });
+    const codeBtn = el('button', { type: 'button', class: 'neo-btn small', text: '游戏内验证码', style: { marginRight: '8px' } });
+    const pwdBtn = el('button', { type: 'button', class: 'neo-btn small', text: 'AuthMe 密码' });
+    const hint = el('div', { style: { fontSize: '12px', color: '#6b7280', marginTop: '6px' } });
+    const inputSlot = el('div', { style: { marginTop: '8px' } });
+    const selector = el('div', { style: { display: 'flex', flexWrap: 'wrap' } }, [codeBtn, pwdBtn]);
+    const authWrap = el('div', { class: 'purchase-field' }, [
+      el('label', { class: 'purchase-label', text: '验证方式（二选一，登录一次后免验证）' }),
+      selector,
+      inputSlot,
+      hint
     ]);
-    const pwdWrap = el('div', { class: 'purchase-field' }, [
-      el('label', { class: 'purchase-label', text: '或 AuthMe 密码' }),
-      pwdInput
-    ]);
+
     const statusText = el('div', { style: { fontSize: '13px', fontWeight: '600', color: '#065f46' } });
     const logoutBtn = el('button', { class: 'neo-btn', text: '退出登录', style: { marginTop: '6px', padding: '6px 12px' } });
     const loggedWrap = el('div', { class: 'purchase-field' }, [statusText, logoutBtn]);
+
+    function applyMethod() {
+      codeBtn.classList.toggle('primary', method === 'code');
+      pwdBtn.classList.toggle('primary', method === 'password');
+      inputSlot.innerHTML = '';
+      if (method === 'code') {
+        inputSlot.appendChild(codeInput);
+        hint.textContent = '游戏内执行 /qshopwebui code 获取 6 位验证码，仅可使用一次。';
+      } else {
+        inputSlot.appendChild(pwdInput);
+        hint.textContent = '使用你登录服务器的 AuthMe 密码（需服务器安装 AuthMe）。';
+      }
+    }
+    codeBtn.onclick = function () { method = 'code'; applyMethod(); };
+    pwdBtn.onclick = function () { method = 'password'; applyMethod(); };
+    applyMethod();
+
     function refresh() {
       const n = getName();
       const logged = n && QSDB.isPlayerLoggedIn(n);
@@ -2165,19 +2187,21 @@
         const m = s && s.method === 'password' ? '（密码登录）' : (s && s.method === 'code' ? '（验证码登录）' : '');
         statusText.textContent = '✓ 已登录' + m + '，本次交易免验证';
         loggedWrap.style.display = '';
-        codeWrap.style.display = 'none';
-        pwdWrap.style.display = 'none';
+        authWrap.style.display = 'none';
       } else {
         loggedWrap.style.display = 'none';
-        codeWrap.style.display = '';
-        pwdWrap.style.display = '';
+        authWrap.style.display = '';
       }
     }
     logoutBtn.onclick = function () {
       QSDB.playerLogout().then(function () { refresh(); Toast.show('已退出登录', 'success'); });
     };
     refresh();
-    return { codeInput: codeInput, pwdInput: pwdInput, codeWrap: codeWrap, pwdWrap: pwdWrap, loggedWrap: loggedWrap, refresh: refresh };
+    return {
+      authWrap: authWrap, codeInput: codeInput, pwdInput: pwdInput,
+      loggedWrap: loggedWrap, refresh: refresh,
+      method: function () { return method; }
+    };
   }
 
   //  在线购买弹窗（填游戏 ID + 验证方式购买）
@@ -2277,8 +2301,7 @@
         nameInput
       ]),
       auth.loggedWrap,
-      auth.codeWrap,
-      auth.pwdWrap,
+      auth.authWrap,
       el('div', { class: 'purchase-field' }, [
         el('label', { class: 'purchase-label', text: '购买份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
         el('div', { style: { display: 'flex', alignItems: 'center' } }, [qtyInput, maxBtn])
@@ -2299,11 +2322,16 @@
         if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
         if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
         const logged = QSDB.isPlayerLoggedIn(player);
-        const code = logged ? '' : auth.codeInput.value.trim();
-        const pwd = logged ? '' : auth.pwdInput.value.trim();
+        const usePwd = auth.method() === 'password';
+        const code = logged ? '' : (usePwd ? '' : auth.codeInput.value.trim());
+        const pwd = logged ? '' : (usePwd ? auth.pwdInput.value.trim() : '');
         if (!logged) {
-          if (!code && !pwd) { Toast.show('请输入游戏内验证码或 AuthMe 密码', 'error'); return false; }
-          if (code && !/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+          if (usePwd) {
+            if (!pwd) { Toast.show('请输入 AuthMe 密码', 'error'); return false; }
+          } else {
+            if (!code) { Toast.show('请输入游戏内验证码', 'error'); return false; }
+            if (!/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+          }
         }
         if (remainingLimit != null && currentQty() > remainingLimit) { Toast.show('超出限购：本周期最多还能购买 ' + remainingLimit + ' 份', 'error'); return false; }
         const qty = currentQty();
@@ -2532,8 +2560,7 @@
         nameInput
       ]),
       auth.loggedWrap,
-      auth.codeWrap,
-      auth.pwdWrap,
+      auth.authWrap,
       el('div', { class: 'purchase-field' }, [
         el('label', { class: 'purchase-label', text: '出售份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
         el('div', { style: { display: 'flex', alignItems: 'center' } }, [qtyInput, maxBtn])
@@ -2553,11 +2580,16 @@
         if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
         if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
         const logged = QSDB.isPlayerLoggedIn(player);
-        const code = logged ? '' : auth.codeInput.value.trim();
-        const pwd = logged ? '' : auth.pwdInput.value.trim();
+        const usePwd = auth.method() === 'password';
+        const code = logged ? '' : (usePwd ? '' : auth.codeInput.value.trim());
+        const pwd = logged ? '' : (usePwd ? auth.pwdInput.value.trim() : '');
         if (!logged) {
-          if (!code && !pwd) { Toast.show('请输入游戏内验证码或 AuthMe 密码', 'error'); return false; }
-          if (code && !/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+          if (usePwd) {
+            if (!pwd) { Toast.show('请输入 AuthMe 密码', 'error'); return false; }
+          } else {
+            if (!code) { Toast.show('请输入游戏内验证码', 'error'); return false; }
+            if (!/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+          }
         }
         const qty = currentQty();
         try { modalRef.setProcessing('处理中...'); } catch (e) { }
@@ -2601,6 +2633,28 @@
     toolbar.appendChild(sortSelect);
     root.appendChild(toolbar);
 
+    // 管理员筛选开关：全服商店 / 无限商店 / 管理员商店（仅管理员可见）
+    let shopFilter = '';
+    const filterBtns = {};
+    const filterBar = el('div', { class: 'admin-only', style: { display: 'none', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' } });
+    filterBar.appendChild(el('span', { style: { fontSize: '13px', color: '#6b7280', marginRight: '10px' }, text: '筛选：' }));
+    [['', '全服商店'], ['infinite', '无限商店'], ['system', '管理员商店']].forEach(function (pair) {
+      const btn = el('button', { class: 'neo-btn small', text: pair[1], style: { marginRight: '8px' } });
+      btn.onclick = function () {
+        shopFilter = pair[0];
+        Object.keys(filterBtns).forEach(function (k) { filterBtns[k].classList.remove('primary'); });
+        btn.classList.add('primary');
+        doSearch(true);
+      };
+      filterBtns[pair[0]] = btn;
+      filterBar.appendChild(btn);
+    });
+    if (state.isAdmin) {
+      filterBar.style.display = 'flex';
+      if (filterBtns['']) filterBtns[''].classList.add('primary');
+    }
+    root.appendChild(filterBar);
+
     const grid = el('div', { class: 'shop-grid', style: { gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' } });
     const status = el('div', { style: { textAlign: 'center', margin: '16px', fontSize: '13px', color: '#6b7280' } });
     const moreBtn = el('button', {
@@ -2620,7 +2674,7 @@
       if (reset) { page = 1; total = 0; rendered = 0; grid.innerHTML = ''; }
       try {
         const data = await QSDB.search(searchInput.value, {
-          page: page, pageSize: 40, material: matSelect.value || undefined, sort: sortSelect.value
+          page: page, pageSize: 40, material: matSelect.value || undefined, sort: sortSelect.value, filter: shopFilter || undefined
         });
         if (data.success) {
           total = data.total || 0;

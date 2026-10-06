@@ -226,6 +226,7 @@
     if (keyword) params.append('q', keyword);
     if (opts.material) params.append('material', opts.material);
     if (opts.shop_type) params.append('shop_type', opts.shop_type);
+    if (opts.filter) params.append('filter', opts.filter);
     if (opts.owner) params.append('owner', opts.owner);
     if (opts.world) params.append('world', opts.world);
     if (opts.min_price !== undefined) params.append('min_price', opts.min_price);
