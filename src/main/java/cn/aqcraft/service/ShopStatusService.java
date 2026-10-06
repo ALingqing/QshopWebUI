@@ -46,7 +46,9 @@ public final class ShopStatusService {
             JsonObject o = JsonParser.parseString(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)).getAsJsonObject();
             if (o.has("open")) open = o.get("open").getAsBoolean();
             if (o.has("maintenance")) maintenance = o.get("maintenance").getAsBoolean();
-            if (o.has("closed_reason")) closedReason = o.get("closed_reason").getAsString();
+            if (o.has("closed_reason") && o.get("closed_reason").isJsonPrimitive()) {
+                closedReason = o.get("closed_reason").getAsString();
+            }
             if (o.has("hidden")) {
                 for (var e : o.get("hidden").getAsJsonObject().entrySet()) {
                     hiddenShops.put(e.getKey(), e.getValue().getAsBoolean());

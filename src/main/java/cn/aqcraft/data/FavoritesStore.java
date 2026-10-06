@@ -41,7 +41,9 @@ public final class FavoritesStore {
             for (Map.Entry<String, JsonElement> e : root.entrySet()) {
                 Set<String> set = new LinkedHashSet<>();
                 if (e.getValue().isJsonArray()) {
-                    for (JsonElement s : e.getValue().getAsJsonArray()) set.add(s.getAsString());
+                    for (JsonElement s : e.getValue().getAsJsonArray()) {
+                        if (s != null && s.isJsonPrimitive()) set.add(s.getAsString());
+                    }
                 }
                 data.put(e.getKey().toLowerCase(), set);
             }

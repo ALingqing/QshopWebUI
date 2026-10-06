@@ -74,9 +74,21 @@ public final class OrderStore {
     }
 
     private void index(JsonObject o) {
-        String p = o.has("player") ? o.get("player").getAsString().toLowerCase(Locale.ROOT) : "";
+        String p = str(o, "player").toLowerCase(Locale.ROOT);
         if (p.isEmpty()) return;
         playerIndex.computeIfAbsent(p, k -> new ArrayList<>()).add(orders.size() - 1);
+    }
+
+    /** 安全取字符串：缺失 / JsonNull / 非基本类型 均返回 ""（避免对 JsonNull 调 getAsString 抛异常） */
+    private static String str(JsonObject o, String key) {
+        if (o == null) return "";
+        JsonElement e = o.get(key);
+        return (e == null || e.isJsonNull() || !e.isJsonPrimitive()) ? "" : e.getAsString();
+    }
+
+    /** null → ""，避免 addProperty 写入 JsonNull */
+    private static String safe(String s) {
+        return s == null ? "" : s;
     }
 
     private void save() {
@@ -139,19 +151,19 @@ public final class OrderStore {
         JsonObject o = new JsonObject();
         o.addProperty("order_id", orderId);
         o.addProperty("seq", seq);
-        o.addProperty("key", idempotencyKey);
-        o.addProperty("type", type);      // BUY / SELL
-        o.addProperty("status", status);  // SUCCESS / FAILED / CANCELLED
+        o.addProperty("key", safe(idempotencyKey));
+        o.addProperty("type", safe(type));      // BUY / SELL
+        o.addProperty("status", safe(status));  // SUCCESS / FAILED / CANCELLED
         o.addProperty("t", now);
-        o.addProperty("shop_id", shopId);
-        o.addProperty("item", item);
-        o.addProperty("material", material);
+        o.addProperty("shop_id", safe(shopId));
+        o.addProperty("item", safe(item));
+        o.addProperty("material", safe(material));
         o.addProperty("amount", amount);
         o.addProperty("items", items);
         o.addProperty("unit_price", unitPrice);
         o.addProperty("total", total);
-        o.addProperty("player", player);
-        o.addProperty("owner", owner);
+        o.addProperty("player", safe(player));
+        o.addProperty("owner", safe(owner));
         o.addProperty("online", online);
         o.addProperty("source", "web");
         if (reason != null && !reason.isEmpty()) o.addProperty("reason", reason);
@@ -168,7 +180,7 @@ public final class OrderStore {
     private JsonObject findByKey(String key) {
         for (int i = orders.size() - 1; i >= 0; i--) {
             JsonObject o = orders.get(i);
-            if (key.equals(o.has("key") ? o.get("key").getAsString() : "")) return o;
+            if (key.equals(str(o, "key"))) return o;
         }
         return null;
     }
@@ -184,7 +196,7 @@ public final class OrderStore {
         playerIndex.clear();
         for (int i = 0; i < orders.size(); i++) {
             JsonObject o = orders.get(i);
-            String p = o.has("player") ? o.get("player").getAsString().toLowerCase(Locale.ROOT) : "";
+            String p = str(o, "player").toLowerCase(Locale.ROOT);
             if (p.isEmpty()) continue;
             playerIndex.computeIfAbsent(p, k -> new ArrayList<>()).add(i);
         }
@@ -198,7 +210,7 @@ public final class OrderStore {
     public synchronized JsonObject byId(String orderId) {
         if (orderId == null) return null;
         for (int i = orders.size() - 1; i >= 0; i--) {
-            if (orderId.equals(orders.get(i).has("order_id") ? orders.get(i).get("order_id").getAsString() : "")) {
+            if (orderId.equals(str(orders.get(i), "order_id"))) {
                 return orders.get(i).deepCopy();
             }
         }
@@ -216,7 +228,7 @@ public final class OrderStore {
         for (int i = idx.size() - 1; i >= 0; i--) {
             JsonObject o = orders.get(idx.get(i));
             if (o == null) continue;
-            if (!upType.isEmpty() && !upType.equals(o.has("type") ? o.get("type").getAsString() : "")) continue;
+            if (!upType.isEmpty() && !upType.equals(str(o, "type"))) continue;
             out.add(o.deepCopy());
         }
         // 分页
@@ -235,7 +247,7 @@ public final class OrderStore {
         for (int i : idx) {
             JsonObject o = orders.get(i);
             if (o == null) continue;
-            if (!upType.isEmpty() && !upType.equals(o.has("type") ? o.get("type").getAsString() : "")) continue;
+            if (!upType.isEmpty() && !upType.equals(str(o, "type"))) continue;
             n++;
         }
         return n;
@@ -259,9 +271,9 @@ public final class OrderStore {
         for (int i = orders.size() - 1; i >= 0; i--) {
             JsonObject o = orders.get(i);
             if (o == null) continue;
-            if (!upType.isEmpty() && !upType.equals(o.has("type") ? o.get("type").getAsString() : "")) continue;
+            if (!upType.isEmpty() && !upType.equals(str(o, "type"))) continue;
             if (!p.isEmpty()) {
-                String op = o.has("player") ? o.get("player").getAsString().toLowerCase(Locale.ROOT) : "";
+                String op = str(o, "player").toLowerCase(Locale.ROOT);
                 if (!p.equals(op)) continue;
             }
             all.add(o.deepCopy());

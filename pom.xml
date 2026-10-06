@@ -6,7 +6,7 @@
 
   <groupId>cn.aqcraft</groupId>
   <artifactId>qshop-webui-plugin</artifactId>
-  <version>1.1.0-beta.5</version>
+  <version>1.1.0-beta.6</version>
   <packaging>jar</packaging>
   <name>QShopWebUI</name>
   <description>QuickShop-Hikari 商店 Web 管理系统（单端口，内嵌 Web UI）</description>

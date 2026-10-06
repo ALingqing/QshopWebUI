@@ -356,35 +356,41 @@ public final class PurchaseService {
                 }
             }
 
-            if (online) {
-                buyer.sendMessage("§a[在线购买] §f成功购买 §e" + amount + "§f 份 §b" + e.shop_cn_name
-                        + " §f花费 §e" + total);
-            }
-            plugin.shopData().invalidate();
-            plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "purchase",
-                    name + " 网页购买 " + e.shop_cn_name + " x" + amount + " 花费 " + total);
-            JsonObject trade = new JsonObject();
-            trade.addProperty("order_id", "WEB-" + UUID.randomUUID());
-            trade.addProperty("status", "SUCCESS");
-            trade.addProperty("t", System.currentTimeMillis());
-            trade.addProperty("type", "BUY");
-            trade.addProperty("source", "web");
-            trade.addProperty("shop_id", e.shop_id);
-            trade.addProperty("item", e.shop_cn_name);
-            trade.addProperty("material", e.material);
-            trade.addProperty("amount", amount);
-            trade.addProperty("items", needItems);
-            trade.addProperty("unit_price", unit);
-            trade.addProperty("total", total);
-            trade.addProperty("player", name);
-            trade.addProperty("owner", e.owner_name);
-            trade.addProperty("online", online);
-            plugin.store().addTrade(trade);
-            recordSuccess("BUY", e, name, amount, needItems, unit, total, online);
+            // —— 交易已完成（扣款 + 发货）。以下记账/通知为「尽力而为」，
+            //    即使出错也不能把已完成的交易判为失败（否则物品已发还退款 = 白送）。——
+            try {
+                if (online) {
+                    buyer.sendMessage("§a[在线购买] §f成功购买 §e" + amount + "§f 份 §b" + e.shop_cn_name
+                            + " §f花费 §e" + total);
+                }
+                plugin.shopData().invalidate();
+                plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "purchase",
+                        name + " 网页购买 " + e.shop_cn_name + " x" + amount + " 花费 " + total);
+                JsonObject trade = new JsonObject();
+                trade.addProperty("order_id", "WEB-" + UUID.randomUUID());
+                trade.addProperty("status", "SUCCESS");
+                trade.addProperty("t", System.currentTimeMillis());
+                trade.addProperty("type", "BUY");
+                trade.addProperty("source", "web");
+                trade.addProperty("shop_id", e.shop_id);
+                trade.addProperty("item", e.shop_cn_name);
+                trade.addProperty("material", e.material);
+                trade.addProperty("amount", amount);
+                trade.addProperty("items", needItems);
+                trade.addProperty("unit_price", unit);
+                trade.addProperty("total", total);
+                trade.addProperty("player", name);
+                trade.addProperty("owner", e.owner_name);
+                trade.addProperty("online", online);
+                plugin.store().addTrade(trade);
+                recordSuccess("BUY", e, name, amount, needItems, unit, total, online);
 
-            // 限购计数（+本次数量，与游戏内共用同一计数）
-            if (shop != null && plugin.limited().available()) {
-                plugin.limited().addUsed(shop, payer.getUniqueId(), amount);
+                // 限购计数（+本次数量，与游戏内共用同一计数）
+                if (shop != null && plugin.limited().available()) {
+                    plugin.limited().addUsed(shop, payer.getUniqueId(), amount);
+                }
+            } catch (Throwable bt) {
+                plugin.getLogger().warning("[购买] 交易已完成但记录/通知失败（不影响本次交易）: " + bt);
             }
 
             JsonObject o = new JsonObject();
@@ -496,29 +502,34 @@ public final class PurchaseService {
                 return failRecord("SELL", e, name, amount, "给你打款失败，交易已取消");
             }
 
-            seller.sendMessage("§a[在线收购] §f成功出售 §e" + amount + "§f 份 §b" + e.shop_cn_name
-                    + " §f获得 §e" + total);
-            plugin.shopData().invalidate();
-            plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "sell",
-                    name + " 网页出售 " + e.shop_cn_name + " x" + amount + " 获得 " + total);
-            JsonObject trade = new JsonObject();
-            trade.addProperty("order_id", "WEB-" + UUID.randomUUID());
-            trade.addProperty("status", "SUCCESS");
-            trade.addProperty("t", System.currentTimeMillis());
-            trade.addProperty("type", "SELL");
-            trade.addProperty("source", "web");
-            trade.addProperty("shop_id", e.shop_id);
-            trade.addProperty("item", e.shop_cn_name);
-            trade.addProperty("material", e.material);
-            trade.addProperty("amount", amount);
-            trade.addProperty("items", needItems);
-            trade.addProperty("unit_price", unit);
-            trade.addProperty("total", total);
-            trade.addProperty("player", name);
-            trade.addProperty("owner", e.owner_name);
-            trade.addProperty("online", true);
-            plugin.store().addTrade(trade);
-            recordSuccess("SELL", e, name, amount, needItems, unit, total, true);
+            // —— 交易已完成（物品入箱 + 报酬到账）。记账/通知为「尽力而为」，出错不影响本次交易。——
+            try {
+                seller.sendMessage("§a[在线收购] §f成功出售 §e" + amount + "§f 份 §b" + e.shop_cn_name
+                        + " §f获得 §e" + total);
+                plugin.shopData().invalidate();
+                plugin.store().addFetchLog(0, 0, plugin.shopData().stats().total, "sell",
+                        name + " 网页出售 " + e.shop_cn_name + " x" + amount + " 获得 " + total);
+                JsonObject trade = new JsonObject();
+                trade.addProperty("order_id", "WEB-" + UUID.randomUUID());
+                trade.addProperty("status", "SUCCESS");
+                trade.addProperty("t", System.currentTimeMillis());
+                trade.addProperty("type", "SELL");
+                trade.addProperty("source", "web");
+                trade.addProperty("shop_id", e.shop_id);
+                trade.addProperty("item", e.shop_cn_name);
+                trade.addProperty("material", e.material);
+                trade.addProperty("amount", amount);
+                trade.addProperty("items", needItems);
+                trade.addProperty("unit_price", unit);
+                trade.addProperty("total", total);
+                trade.addProperty("player", name);
+                trade.addProperty("owner", e.owner_name);
+                trade.addProperty("online", true);
+                plugin.store().addTrade(trade);
+                recordSuccess("SELL", e, name, amount, needItems, unit, total, true);
+            } catch (Throwable bt) {
+                plugin.getLogger().warning("[收购] 交易已完成但记录/通知失败（不影响本次交易）: " + bt);
+            }
 
             JsonObject o = new JsonObject();
             o.addProperty("success", true);
