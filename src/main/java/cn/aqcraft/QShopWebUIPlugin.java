@@ -80,6 +80,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        syncConfigKeys();
         try {
             Materials.init(this);
         cn.aqcraft.util.Pinyin.init(this);
@@ -312,7 +313,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     // ============================================================
 
     public void reloadPlugin() {
-        reloadConfig();
+        syncConfigKeys();
         config = PluginConfig.load(this);
         config.resolve(resolveServerPort());
         bridge.reload();
@@ -322,6 +323,58 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         if (notifications != null) notifications.applyConfig();
         stopWeb();
         startWeb();
+    }
+
+    /**
+     * 自动补全「版本新增」的配置项。
+     * <p>对比 jar 内置的 config.yml（默认文本）与玩家磁盘上的 config.yml：
+     * 凡是内置文件里有、而玩家文件里缺失的键，<b>以纯文本方式追加</b>到玩家 config.yml
+     * （连同其上方注释）。只新增、不覆盖玩家已有值、不改动/删除任何已有行，
+     * 因此注释、顺序与自定义值全部保留。检测到无缺失项时不写盘。</p>
+     */
+    private void syncConfigKeys() {
+        try {
+            File configFile = new File(getDataFolder(), "config.yml");
+            if (!configFile.isFile()) {
+                saveDefaultConfig();
+                reloadConfig();
+                return;
+            }
+            String defText = readBundledConfig();
+            if (defText == null) {
+                reloadConfig();
+                return;
+            }
+            String curText = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
+            cn.aqcraft.util.ConfigMerger.Result r = cn.aqcraft.util.ConfigMerger.merge(defText, curText);
+            if (!r.changed) {
+                reloadConfig();
+                return;
+            }
+            Files.write(configFile.toPath(), r.text.getBytes(StandardCharsets.UTF_8));
+            reloadConfig();
+            getLogger().info("[配置] 已自动补全 " + r.added.size() + " 个新增配置项: " + String.join(", ", r.added));
+        } catch (Throwable t) {
+            getLogger().warning("[配置] 自动补全新配置项失败: " + t.getMessage());
+            try {
+                reloadConfig();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** 读取 jar 内置的 config.yml 文本（UTF-8）。 */
+    private String readBundledConfig() {
+        try (java.io.InputStream in = getResource("config.yml")) {
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** 读取当前游戏端口（绑定失败时回退读取 server.properties） */

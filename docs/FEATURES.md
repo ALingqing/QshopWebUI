@@ -10,6 +10,7 @@
 | 玩家订单查询 | 玩家凭游戏内一次性验证码（或登录会话 token）查询自己的买卖记录 | `EnhancedApi.myOrders` |
 | 玩家登录（免重复验证码） | 游戏内验证码 或 AuthMe 密码登录一次，TTL 内交易/查询免重复验证 | `PlayerAuthService` / `/api/player/login` |
 | 网页购买 / 出售 | 玩家在线或允许离线时通过网页交易 | `PurchaseService` |
+| 配置自动同步 | 启动/重载时把新版本新增的配置键追加到旧 config.yml（保留已有值与注释，只增不改） | `ConfigMerger` |
 
 ## P1 经营增强
 
