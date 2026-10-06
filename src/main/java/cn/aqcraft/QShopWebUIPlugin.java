@@ -154,6 +154,9 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         if (webServer != null) {
             webServer.stop();
         }
+        if (shopData != null) {
+            shopData.shutdown();
+        }
         if (store != null) {
             try {
                 store.flushActivity();

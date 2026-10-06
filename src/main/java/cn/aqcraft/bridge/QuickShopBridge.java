@@ -134,6 +134,7 @@ public final class QuickShopBridge {
         if (Bukkit.isPrimaryThread()) {
             return getAllShopsRaw();
         }
+        if (!plugin.isEnabled()) return Collections.emptyList(); // 插件停用时禁止注册调度任务
         Future<List<Object>> f = Bukkit.getScheduler().callSyncMethod(
                 plugin, (Callable<List<Object>>) this::getAllShopsRaw);
         try {
@@ -178,6 +179,7 @@ public final class QuickShopBridge {
     /** 把任意任务调度到主线程执行（操作 QuickShop 对象必须如此） */
     public <T> T runOnMain(Callable<T> task) throws Exception {
         if (Bukkit.isPrimaryThread()) return task.call();
+        if (!plugin.isEnabled()) throw new Exception("插件已停用，跳过主线程调度"); // 避免 "register task while disabled"
         Future<T> f = Bukkit.getScheduler().callSyncMethod(plugin, task);
         return f.get(20, TimeUnit.SECONDS);
     }

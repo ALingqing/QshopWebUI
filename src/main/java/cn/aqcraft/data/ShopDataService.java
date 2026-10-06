@@ -33,14 +33,26 @@ public final class ShopDataService {
             });
     private final java.util.concurrent.atomic.AtomicLong lastShopEventAt = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicBoolean refreshLoopActive = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean closed;
 
     public ShopDataService(QShopWebUIPlugin plugin, QuickShopBridge bridge) {
         this.plugin = plugin;
         this.bridge = bridge;
     }
 
+    /** 插件停用时调用：停止后台刷新线程，避免停用后再向调度器注册任务。 */
+    public void shutdown() {
+        closed = true;
+        refreshExec.shutdownNow();
+    }
+
+    private boolean canRefresh() {
+        return !closed && plugin.isEnabled();
+    }
+
     /** 获取当前快照（必要时自动刷新） */
     public List<ShopEntry> shops() {
+        if (!canRefresh()) return snapshot;
         long ttl = plugin.config().snapshotTtlMs;
         if (snapshotAt > 0 && System.currentTimeMillis() - snapshotAt <= ttl) {
             return snapshot;
@@ -56,6 +68,7 @@ public final class ShopDataService {
 
     /** 强制刷新快照（同步执行） */
     public void refresh() {
+        if (!canRefresh()) return;
         synchronized (lock) {
             refreshLocked();
         }
@@ -72,6 +85,7 @@ public final class ShopDataService {
 
     /** QuickShop 商店数据发生变化（创建/删除/改价/库存等）→ 稍后自动刷新快照 */
     public void onShopChanged() {
+        if (!canRefresh()) return;
         lastShopEventAt.set(System.currentTimeMillis());
         if (refreshLoopActive.compareAndSet(false, true)) {
             refreshExec.schedule(this::debounceTick, 1000L, java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -80,6 +94,10 @@ public final class ShopDataService {
 
     private void debounceTick() {
         try {
+            if (!canRefresh()) {
+                refreshLoopActive.set(false);
+                return;
+            }
             long now = System.currentTimeMillis();
             // 事件仍在持续（如批量删除）→ 继续等待，合并为一轮刷新
             if (now - lastShopEventAt.get() < 1500L) {
@@ -130,6 +148,7 @@ public final class ShopDataService {
 
     private List<ShopEntry> buildSnapshot(long now) {
         if (!bridge.isAvailable()) return Collections.emptyList();
+        if (!plugin.isEnabled()) return this.snapshot;
         try {
             List<Object> raw = bridge.getAllShopsOnMainThread();
             List<ShopEntry> list = new ArrayList<>(raw.size());
