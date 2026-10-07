@@ -1,10 +1,14 @@
 package cn.aqcraft;
 
+import cn.aqcraft.api.QShopWebUIAPI;
 import cn.aqcraft.auth.SessionManager;
+import cn.aqcraft.auth.GameCodeService;
+import cn.aqcraft.auth.PlayerAuthService;
 import cn.aqcraft.bridge.AuthMeBridge;
 import cn.aqcraft.bridge.EconomyBridge;
 import cn.aqcraft.bridge.LimitedBridge;
 import cn.aqcraft.bridge.QuickShopBridge;
+import cn.aqcraft.data.FavoritesStore;
 import cn.aqcraft.data.RequestStats;
 import cn.aqcraft.data.ShopDataService;
 import cn.aqcraft.data.WebStore;
@@ -13,7 +17,14 @@ import cn.aqcraft.listener.GameTradeListener;
 import cn.aqcraft.listener.PurchaseJoinListener;
 import cn.aqcraft.listener.ShopDataListener;
 import cn.aqcraft.listener.ShopRemovalListener;
+import cn.aqcraft.notify.NotificationService;
+import cn.aqcraft.order.OrderStore;
 import cn.aqcraft.purchase.PurchaseService;
+import cn.aqcraft.service.AuditService;
+import cn.aqcraft.service.BusinessStatsService;
+import cn.aqcraft.service.ComparisonService;
+import cn.aqcraft.service.ShopStatusService;
+import cn.aqcraft.service.StockAlertService;
 import cn.aqcraft.util.Materials;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -50,6 +61,17 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     private PurchaseService purchases;
     private AuthMeBridge authme;
     private LimitedBridge limited;
+    private GameCodeService gameCodes;
+    private PlayerAuthService playerAuth;
+    private OrderStore orderStore;
+    private StockAlertService stockAlerts;
+    private ShopStatusService shopStatus;
+    private AuditService audit;
+    private BusinessStatsService bizStats;
+    private ComparisonService comparison;
+    private FavoritesStore favorites;
+    private NotificationService notifications;
+    private cn.aqcraft.api.QShopWebUIAPI qsapi;
 
     // ============================================================
     // 生命周期
@@ -58,6 +80,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        syncConfigKeys();
         try {
             Materials.init(this);
         cn.aqcraft.util.Pinyin.init(this);
@@ -77,11 +100,24 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         economy = new EconomyBridge(this);
         economy.reload();
         purchases = new PurchaseService(this);
+        playerAuth = new PlayerAuthService(this);
+        gameCodes = new GameCodeService(this);
 
         authme = new AuthMeBridge(this);
         authme.reload();
         limited = new LimitedBridge(this);
         limited.reload();
+
+        orderStore = new OrderStore(this);
+        orderStore.load();
+        stockAlerts = new StockAlertService(this);
+        shopStatus = new ShopStatusService(this);
+        audit = new AuditService(this);
+        bizStats = new BusinessStatsService(this);
+        comparison = new ComparisonService();
+        favorites = new FavoritesStore(this);
+        notifications = new NotificationService(this);
+
         getServer().getPluginManager().registerEvents(new PurchaseJoinListener(this), this);
         GameTradeListener.register(this);
         ShopRemovalListener.register(this);
@@ -118,6 +154,9 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
         if (webServer != null) {
             webServer.stop();
         }
+        if (shopData != null) {
+            shopData.shutdown();
+        }
         if (store != null) {
             try {
                 store.flushActivity();
@@ -128,6 +167,11 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
             } catch (Throwable ignored) {
             }
         }
+        if (orderStore != null) orderStore.flush();
+        if (audit != null) audit.flush();
+        if (bizStats != null) bizStats.flush();
+        if (shopStatus != null) shopStatus.flush();
+        if (favorites != null) favorites.flush();
         getLogger().info("QShopWebUI 已停用");
     }
 
@@ -170,6 +214,17 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length > 0 && "code".equalsIgnoreCase(args[0])) {
+            if (!(sender instanceof org.bukkit.entity.Player)) {
+                sender.sendMessage("§c只有游戏玩家可以生成验证码");
+                return true;
+            }
+            org.bukkit.entity.Player player = (org.bukkit.entity.Player) sender;
+            String code = gameCodes.issue(player);
+            player.sendMessage("§aQShopWebUI 网页交易验证码: §e§l" + code);
+            player.sendMessage("§7有效期 " + config.gameCodeTtlSeconds + " 秒，仅可使用一次。请勿发送给他人。");
+            return true;
+        }
         if (!sender.hasPermission("qshopwebui.admin")) {
             sender.sendMessage("§c权限不足");
             return true;
@@ -229,7 +284,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
             return Collections.emptyList();
         }
         if (args.length == 1) {
-            return partial(args[0], Arrays.asList("status", "reload", "port"));
+            return partial(args[0], Arrays.asList("code", "status", "reload", "port"));
         }
         if (args.length == 2 && "port".equalsIgnoreCase(args[0])) {
             return partial(args[1], Collections.singletonList(String.valueOf(config.port)));
@@ -250,6 +305,7 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     private void help(CommandSender sender) {
         sender.sendMessage("§6===== QShopWebUI =====");
+        sender.sendMessage("§e/qshopwebui code §7- 生成网页交易验证码（游戏玩家）");
         sender.sendMessage("§e/qshopwebui status §7- 查看运行状态");
         sender.sendMessage("§e/qshopwebui reload §7- 重载配置");
         sender.sendMessage("§e/qshopwebui port <端口> §7- 修改并重绑端口");
@@ -260,15 +316,68 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
     // ============================================================
 
     public void reloadPlugin() {
-        reloadConfig();
+        syncConfigKeys();
         config = PluginConfig.load(this);
         config.resolve(resolveServerPort());
         bridge.reload();
         economy.reload();
         if (authme != null) authme.reload();
         if (limited != null) limited.reload();
+        if (notifications != null) notifications.applyConfig();
         stopWeb();
         startWeb();
+    }
+
+    /**
+     * 自动补全「版本新增」的配置项。
+     * <p>对比 jar 内置的 config.yml（默认文本）与玩家磁盘上的 config.yml：
+     * 凡是内置文件里有、而玩家文件里缺失的键，<b>以纯文本方式追加</b>到玩家 config.yml
+     * （连同其上方注释）。只新增、不覆盖玩家已有值、不改动/删除任何已有行，
+     * 因此注释、顺序与自定义值全部保留。检测到无缺失项时不写盘。</p>
+     */
+    private void syncConfigKeys() {
+        try {
+            File configFile = new File(getDataFolder(), "config.yml");
+            if (!configFile.isFile()) {
+                saveDefaultConfig();
+                reloadConfig();
+                return;
+            }
+            String defText = readBundledConfig();
+            if (defText == null) {
+                reloadConfig();
+                return;
+            }
+            String curText = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
+            cn.aqcraft.util.ConfigMerger.Result r = cn.aqcraft.util.ConfigMerger.merge(defText, curText);
+            if (!r.changed) {
+                reloadConfig();
+                return;
+            }
+            Files.write(configFile.toPath(), r.text.getBytes(StandardCharsets.UTF_8));
+            reloadConfig();
+            getLogger().info("[配置] 已自动补全 " + r.added.size() + " 个新增配置项: " + String.join(", ", r.added));
+        } catch (Throwable t) {
+            getLogger().warning("[配置] 自动补全新配置项失败: " + t.getMessage());
+            try {
+                reloadConfig();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** 读取 jar 内置的 config.yml 文本（UTF-8）。 */
+    private String readBundledConfig() {
+        try (java.io.InputStream in = getResource("config.yml")) {
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** 读取当前游戏端口（绑定失败时回退读取 server.properties） */
@@ -339,6 +448,52 @@ public final class QShopWebUIPlugin extends JavaPlugin implements CommandExecuto
 
     public LimitedBridge limited() {
         return limited;
+    }
+
+    public GameCodeService gameCodes() {
+        return gameCodes;
+    }
+
+    public PlayerAuthService playerAuth() {
+        return playerAuth;
+    }
+
+    public OrderStore orders() {
+        return orderStore;
+    }
+
+    public StockAlertService stockAlerts() {
+        return stockAlerts;
+    }
+
+    public ShopStatusService shopStatus() {
+        return shopStatus;
+    }
+
+    public AuditService audit() {
+        return audit;
+    }
+
+    public BusinessStatsService stats() {
+        return bizStats;
+    }
+
+    public ComparisonService comparison() {
+        return comparison;
+    }
+
+    public FavoritesStore favorites() {
+        return favorites;
+    }
+
+    public NotificationService notifications() {
+        return notifications;
+    }
+
+    /** 供其他插件获取公开扩展 API（开发附属插件用）。 */
+    public cn.aqcraft.api.QShopWebUIAPI getAPI() {
+        if (qsapi == null) qsapi = new cn.aqcraft.api.QShopWebUIImpl(this);
+        return qsapi;
     }
 
     /** 网页修改密码后刷新内存中的配置 */

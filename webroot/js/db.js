@@ -88,6 +88,82 @@
     } catch (e) {}
   }
 
+  // ============================================================
+  // 玩家交易登录会话（登录一次后免重复验证码）
+  // ============================================================
+  function getPlayerSession() {
+    try {
+      const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem('qsw_player_session') : null;
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      return (s && s.name && s.token) ? s : null;
+    } catch (e) { return null; }
+  }
+
+  function savePlayerSession(name, token, method) {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem('qsw_player_session', JSON.stringify({
+        name: String(name || '').trim(), token: token || '', method: method || '', at: Date.now()
+      }));
+      localStorage.setItem('qsw_player_name', String(name || '').trim());
+    } catch (e) {}
+  }
+
+  function clearPlayerSession() {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem('qsw_player_session');
+    } catch (e) {}
+  }
+
+  /** 当前玩家（同名）是否已登录 */
+  function isPlayerLoggedIn(player) {
+    const s = getPlayerSession();
+    if (!s) return false;
+    return s.name.toLowerCase() === String(player || '').trim().toLowerCase();
+  }
+
+  /** 取当前玩家有效的 token（名字匹配时） */
+  function playerTokenFor(player) {
+    const s = getPlayerSession();
+    if (s && s.name.toLowerCase() === String(player || '').trim().toLowerCase()) return s.token;
+    return '';
+  }
+
+  /** 玩家登录：code（游戏内验证码）或 password（AuthMe 密码）二选一 */
+  async function playerLogin(player, code, password) {
+    try {
+      const data = await apiCall('/player/login', {
+        method: 'POST',
+        body: { player: player || '', code: code || '', password: password || '' }
+      });
+      if (data && data.success && data.token) {
+        savePlayerSession(data.player || player, data.token, data.method);
+      }
+      return data || { success: false, error: '服务器无响应' };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async function playerLogout() {
+    const s = getPlayerSession();
+    try {
+      await apiCall('/player/logout', { method: 'POST', body: { player: s ? s.name : '', token: s ? s.token : '' } });
+    } catch (e) {}
+    clearPlayerSession();
+    return { success: true };
+  }
+
+  async function playerSessionInfo(player) {
+    const s = getPlayerSession();
+    const token = playerTokenFor(player);
+    try {
+      const data = await apiCall('/player/session?player=' + encodeURIComponent(player || '') + '&token=' + encodeURIComponent(token));
+      return data || { success: false };
+    } catch (e) { return { success: false, error: e.message }; }
+  }
+
   async function apiCall(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
@@ -150,6 +226,7 @@
     if (keyword) params.append('q', keyword);
     if (opts.material) params.append('material', opts.material);
     if (opts.shop_type) params.append('shop_type', opts.shop_type);
+    if (opts.filter) params.append('filter', opts.filter);
     if (opts.owner) params.append('owner', opts.owner);
     if (opts.world) params.append('world', opts.world);
     if (opts.min_price !== undefined) params.append('min_price', opts.min_price);
@@ -820,6 +897,15 @@
     isLoggedIn: isLoggedIn,
     isAdmin: isAdmin,
     getSession: getSession,
+    // 玩家交易登录会话（免重复验证码）
+    playerLogin: playerLogin,
+    playerLogout: playerLogout,
+    playerSession: playerSessionInfo,
+    getPlayerSession: getPlayerSession,
+    isPlayerLoggedIn: isPlayerLoggedIn,
+    clearPlayerSession: clearPlayerSession,
+    // 通用 API 调用（自动带 session、GET 缓存），供新页签/附属功能使用
+    call: apiCall,
 
     // 查询连接状态
     getQsFilterStatus: async function () {
@@ -1034,13 +1120,15 @@
       }
     },
 
-    // 网页「在线购买」：填游戏 ID + 游戏密码（AuthMe 验证）购买
-    purchaseShop: async function (shopId, player, amount, password) {
+    // 网页「在线购买」：填游戏 ID + 游戏内一次性验证码购买
+    purchaseShop: async function (shopId, player, amount, code, password) {
       try {
+        const token = playerTokenFor(player);
         const data = await apiCall('/purchase', {
           method: 'POST',
-          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, code: code || '', password: password || '', token: token }
         });
+        if (data && data.auth_token) savePlayerSession(player, data.auth_token, data.auth_method);
         if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false, error: '服务器无响应' };
       } catch (e) {
@@ -1048,13 +1136,15 @@
       }
     },
 
-    // 网页「在线出售」（卖给收购商店）：填游戏 ID + 游戏密码（AuthMe 验证）出售
-    sellShop: async function (shopId, player, amount, password) {
+    // 网页「在线出售」（卖给收购商店）：游戏内验证码 或 AuthMe 密码出售
+    sellShop: async function (shopId, player, amount, code, password) {
       try {
+        const token = playerTokenFor(player);
         const data = await apiCall('/sell', {
           method: 'POST',
-          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, password: password || '' }
+          body: { shop_id: String(shopId), player: player || '', amount: Number(amount) || 1, code: code || '', password: password || '', token: token }
         });
+        if (data && data.auth_token) savePlayerSession(player, data.auth_token, data.auth_method);
         if (data && data.success) { cacheClear(); memoryCache.lastUpdate = 0; }
         return data || { success: false, error: '服务器无响应' };
       } catch (e) {

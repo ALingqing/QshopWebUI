@@ -31,10 +31,14 @@ public final class ShopQuery {
         String st = p.shopType == null || p.shopType.isEmpty() ? "" : p.shopType.trim().toUpperCase(java.util.Locale.ROOT);
         String ow = p.owner == null || p.owner.isEmpty() ? "" : p.owner.trim().toLowerCase(java.util.Locale.ROOT);
         String wd = p.world == null ? "" : p.world.trim();
+        String flt = p.filter == null ? "" : p.filter.trim().toLowerCase(java.util.Locale.ROOT);
 
         List<ShopEntry> results = new ArrayList<>(all.size());
         for (ShopEntry s : all) {
             if (!st.isEmpty() && !st.equalsIgnoreCase(s.shop_type)) continue;
+            if ("infinite".equals(flt) && !isInfinite(s)) continue;
+            if ("system".equals(flt) && !isSystem(s)) continue;
+            if ("player".equals(flt) && isSystem(s)) continue;
             if (!mat.isEmpty() && (s.material == null || !mat.equals(s.material.toUpperCase(java.util.Locale.ROOT)))) continue;
             if (!ow.isEmpty() && (s.owner_name == null || !s.owner_name.toLowerCase(java.util.Locale.ROOT).contains(ow))) continue;
             if (!wd.isEmpty() && (s.world == null || !s.world.contains(wd))) continue;
@@ -92,6 +96,16 @@ public final class ShopQuery {
             pageItems = new ArrayList<>(results.subList(start, Math.min(start + limit, total)));
         }
         return new Result(pageItems, total, page, limit);
+    }
+
+    /** 系统（管理员）商店 */
+    private static boolean isSystem(ShopEntry s) {
+        return s.system_shop || Boolean.TRUE.equals(s.is_system_shop);
+    }
+
+    /** 无限商店（无限库存 / 系统商店） */
+    private static boolean isInfinite(ShopEntry s) {
+        return s.system_shop || (s.quantity != null && s.quantity < 0);
     }
 
     private static long parseId(String id) {

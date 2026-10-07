@@ -908,7 +908,7 @@
   function switchTab(tab, opts) {
     uiLogger.info('[UI] 切换页面 → ' + tab + (opts && opts.material ? ' (物品: ' + opts.material + ')' : ''));
     // 权限检查
-    if ((tab === 'admin' || tab === 'data' || tab === 'backup' || tab === 'monitor' || tab === 'announce') && !state.isAdmin) {
+    if ((tab === 'admin' || tab === 'data' || tab === 'backup' || tab === 'monitor' || tab === 'announce' || tab === 'orders' || tab === 'compare' || tab === 'audit' || tab === 'business' || tab === 'stock' || tab === 'status' || tab === 'notify') && !state.isAdmin) {
       Toast.show('请先使用管理员账户登录', 'warning');
       showLoginModal();
       return;
@@ -996,6 +996,13 @@
         case 'sell': initSellPage(); break;
         case 'stats': initStatsPage(); break;
         case 'monitor': initMonitorPage(); break;
+        case 'orders': initOrdersPage(); break;
+        case 'compare': initComparePage(); break;
+        case 'audit': initAuditPage(); break;
+        case 'business': initBusinessPage(); break;
+        case 'stock': initStockPage(); break;
+        case 'status': initStatusPage(); break;
+        case 'notify': initNotifyPage(); break;
         case 'backup': initBackupPage(); break;
         case 'admin': initAdmin(); break;
         case 'data': initDataIO(); break;
@@ -1880,7 +1887,7 @@
               titleWrap.appendChild(matSmall);
             }
           } else {
-            // 整个文本缺失：整行替换为预设图片（淡入）
+            // 整个文本缺失：整行显示预设图片（淡入）
             titleWrap.classList.add('text-missing-row');
             const fb = el('img', {
               class: 'text-missing-img text-missing-row-img',
@@ -2110,7 +2117,9 @@
       r.appendChild(el('td', { text: String(val) }));
       info.appendChild(r);
     }
-    tr('价格', '$' + (shop.price_display !== undefined && shop.price_display !== null ? String(shop.price_display) : Number(shop.price || 0).toFixed(2)));
+    tr('价格', '$' + (shop.price_display !== undefined && shop.price_display !== null
+      ? String(shop.price_display)
+      : unitPrice.toFixed(2)));
     tr('堆叠', shop.stacking_amount || 1);
     tr('世界', shop.world || '-');
     tr('坐标', '(' + shop.x + ', ' + shop.y + ', ' + shop.z + ')');
@@ -2132,7 +2141,70 @@
     return card;
   }
 
-  //  在线购买弹窗（填游戏 ID + 游戏密码直接购买）
+  //  构建玩家「验证方式」区块：顶部二选一（游戏内验证码 / AuthMe 密码），下方为对应输入框；
+  //  已登录（同名会话）时改为显示登录状态并免验证。
+  function buildPlayerAuthFields(getName) {
+    let method = 'code'; // 'code' | 'password'
+    const codeInput = el('input', { type: 'text', inputmode: 'numeric', class: 'purchase-input', placeholder: '游戏内验证码（/qshopwebui code）', maxlength: '6', style: { width: '100%' } });
+    const pwdInput = el('input', { type: 'password', class: 'purchase-input', placeholder: 'AuthMe 密码', maxlength: '64', style: { width: '100%' } });
+    const codeBtn = el('button', { type: 'button', class: 'neo-btn small', text: '游戏内验证码', style: { marginRight: '8px' } });
+    const pwdBtn = el('button', { type: 'button', class: 'neo-btn small', text: 'AuthMe 密码' });
+    const hint = el('div', { style: { fontSize: '12px', color: '#6b7280', marginTop: '6px' } });
+    const inputSlot = el('div', { style: { marginTop: '8px' } });
+    const selector = el('div', { style: { display: 'flex', flexWrap: 'wrap' } }, [codeBtn, pwdBtn]);
+    const authWrap = el('div', { class: 'purchase-field' }, [
+      el('label', { class: 'purchase-label', text: '验证方式（二选一，登录一次后免验证）' }),
+      selector,
+      inputSlot,
+      hint
+    ]);
+
+    const statusText = el('div', { style: { fontSize: '13px', fontWeight: '600', color: '#065f46' } });
+    const logoutBtn = el('button', { class: 'neo-btn', text: '退出登录', style: { marginTop: '6px', padding: '6px 12px' } });
+    const loggedWrap = el('div', { class: 'purchase-field' }, [statusText, logoutBtn]);
+
+    function applyMethod() {
+      codeBtn.classList.toggle('primary', method === 'code');
+      pwdBtn.classList.toggle('primary', method === 'password');
+      inputSlot.innerHTML = '';
+      if (method === 'code') {
+        inputSlot.appendChild(codeInput);
+        hint.textContent = '游戏内执行 /qshopwebui code 获取 6 位验证码，仅可使用一次。';
+      } else {
+        inputSlot.appendChild(pwdInput);
+        hint.textContent = '使用你登录服务器的 AuthMe 密码（需服务器安装 AuthMe）。';
+      }
+    }
+    codeBtn.onclick = function () { method = 'code'; applyMethod(); };
+    pwdBtn.onclick = function () { method = 'password'; applyMethod(); };
+    applyMethod();
+
+    function refresh() {
+      const n = getName();
+      const logged = n && QSDB.isPlayerLoggedIn(n);
+      if (logged) {
+        const s = QSDB.getPlayerSession();
+        const m = s && s.method === 'password' ? '（密码登录）' : (s && s.method === 'code' ? '（验证码登录）' : '');
+        statusText.textContent = '✓ 已登录' + m + '，本次交易免验证';
+        loggedWrap.style.display = '';
+        authWrap.style.display = 'none';
+      } else {
+        loggedWrap.style.display = 'none';
+        authWrap.style.display = '';
+      }
+    }
+    logoutBtn.onclick = function () {
+      QSDB.playerLogout().then(function () { refresh(); Toast.show('已退出登录', 'success'); });
+    };
+    refresh();
+    return {
+      authWrap: authWrap, codeInput: codeInput, pwdInput: pwdInput,
+      loggedWrap: loggedWrap, refresh: refresh,
+      method: function () { return method; }
+    };
+  }
+
+  //  在线购买弹窗（填游戏 ID + 验证方式购买）
   function showPurchaseModal(shop) {
     const unitPrice = Number(shop.price || 0);
     const unitDisplay = (shop.price_display !== undefined && shop.price_display !== null)
@@ -2149,9 +2221,8 @@
       type: 'text', class: 'purchase-input', placeholder: '请输入你的游戏 ID',
       value: savedName, maxlength: '16', style: { width: '100%' }
     });
-    const passInput = el('input', {
-      type: 'password', class: 'purchase-input', placeholder: '游戏密码（AuthMe 验证身份）', style: { width: '100%' }
-    });
+    const auth = buildPlayerAuthFields(function () { return nameInput.value.trim(); });
+    nameInput.addEventListener('change', auth.refresh);
     const qtyInput = el('input', {
       type: 'number', class: 'purchase-input purchase-qty', value: '1',
       min: '1', max: '64', style: { width: '110px' }
@@ -2229,10 +2300,8 @@
         el('label', { class: 'purchase-label', text: '游戏 ID' }),
         nameInput
       ]),
-      el('div', { class: 'purchase-field' }, [
-        el('label', { class: 'purchase-label', text: '游戏密码（AuthMe 验证身份）' }),
-        passInput
-      ]),
+      auth.loggedWrap,
+      auth.authWrap,
       el('div', { class: 'purchase-field' }, [
         el('label', { class: 'purchase-label', text: '购买份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
         el('div', { style: { display: 'flex', alignItems: 'center' } }, [qtyInput, maxBtn])
@@ -2240,7 +2309,7 @@
       summary,
       balanceInfo,
       limitInfo,
-      el('div', { class: 'purchase-tip', text: '购买需验证游戏密码（AuthMe）；在线玩家物品直接放入背包，离线玩家上线时自动发放（可在服务器配置关闭）。' })
+      el('div', { class: 'purchase-tip', text: '游戏内验证码 或 AuthMe 密码 二选一即可；登录一次后短时间内交易免验证。在线玩家物品直接放入背包，离线玩家上线时自动发放。' })
     ]);
 
     let modalRef = null;
@@ -2252,17 +2321,26 @@
         const player = nameInput.value.trim();
         if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
         if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
-        const password = passInput.value;
-        if (!password) { Toast.show('请输入游戏密码（AuthMe 验证身份）', 'error'); return false; }
+        const logged = QSDB.isPlayerLoggedIn(player);
+        const usePwd = auth.method() === 'password';
+        const code = logged ? '' : (usePwd ? '' : auth.codeInput.value.trim());
+        const pwd = logged ? '' : (usePwd ? auth.pwdInput.value.trim() : '');
+        if (!logged) {
+          if (usePwd) {
+            if (!pwd) { Toast.show('请输入 AuthMe 密码', 'error'); return false; }
+          } else {
+            if (!code) { Toast.show('请输入游戏内验证码', 'error'); return false; }
+            if (!/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+          }
+        }
         if (remainingLimit != null && currentQty() > remainingLimit) { Toast.show('超出限购：本周期最多还能购买 ' + remainingLimit + ' 份', 'error'); return false; }
         const qty = currentQty();
         try { modalRef.setProcessing('处理中...'); } catch (e) { }
-        QSDB.purchaseShop(shop.shop_id, player, qty, password).then(function (r) {
+        QSDB.purchaseShop(shop.shop_id, player, qty, code, pwd).then(function (r) {
           if (r && r.success) {
             try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
             Toast.show('✓ 购买成功：' + r.item + ' ×' + r.amount + ' 份，花费 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
             QSDB.clearCache();
-            refreshTradePage();
             try { modalRef.close(); } catch (e) { }
             // 稍后刷新当前物品详情页（库存已变化）
             setTimeout(function () {
@@ -2417,9 +2495,8 @@
       type: 'text', class: 'purchase-input', placeholder: '请输入你的游戏 ID',
       value: savedName, maxlength: '16', style: { width: '100%' }
     });
-    const passInput = el('input', {
-      type: 'password', class: 'purchase-input', placeholder: '游戏密码（AuthMe 验证身份）', style: { width: '100%' }
-    });
+    const auth = buildPlayerAuthFields(function () { return nameInput.value.trim(); });
+    nameInput.addEventListener('change', auth.refresh);
     const qtyInput = el('input', {
       type: 'number', class: 'purchase-input purchase-qty', value: '1',
       min: '1', max: '64', style: { width: '110px' }
@@ -2427,6 +2504,7 @@
     const maxBtn = el('button', { class: 'neo-btn', text: '最大', style: { marginLeft: '8px', padding: '8px 14px' } });
     const summary = el('div', { class: 'purchase-summary' });
     const balanceInfo = el('div', { style: { fontSize: '13px', fontWeight: '600', color: '#065f46', marginTop: '-4px' } });
+    let currentBalance = null;
     balanceInfo.textContent = '💰 输入游戏 ID 后自动查询余额';
     nameInput.addEventListener('change', function () {
       const n = nameInput.value.trim();
@@ -2434,7 +2512,8 @@
       balanceInfo.textContent = '💰 查询中...';
       QSDB.getWallet(n).then(function (w) {
         if (w && w.success && w.balance != null) {
-          balanceInfo.textContent = '💰 ' + n + ' 的余额: $' + w.balance;
+          currentBalance = Number(w.balance);
+          balanceInfo.textContent = '💰 ' + n + ' 的余额: $' + w.balance + (w.pending_items ? ('（待领取 ' + w.pending_items + ' 件）') : '');
         } else {
           balanceInfo.textContent = '💰 无法查询余额（经济插件未安装或账户不存在）';
         }
@@ -2480,17 +2559,15 @@
         el('label', { class: 'purchase-label', text: '游戏 ID' }),
         nameInput
       ]),
-      el('div', { class: 'purchase-field' }, [
-        el('label', { class: 'purchase-label', text: '游戏密码（AuthMe 验证身份）' }),
-        passInput
-      ]),
+      auth.loggedWrap,
+      auth.authWrap,
       el('div', { class: 'purchase-field' }, [
         el('label', { class: 'purchase-label', text: '出售份数（1 份 = ' + stackAmount + ' 个，最多 64 份）' }),
         el('div', { style: { display: 'flex', alignItems: 'center' } }, [qtyInput, maxBtn])
       ]),
       summary,
       balanceInfo,
-      el('div', { class: 'purchase-tip', text: '⚠ 出售需验证游戏密码（AuthMe）；物品将从你的背包扣除，报酬直接存入你的账户。' + (ownerName ? '' : '（系统商店：无限收购）') })
+      el('div', { class: 'purchase-tip', text: '⚠ 游戏内验证码 或 AuthMe 密码 二选一即可；登录一次后短时间内交易免验证。物品将从你的背包扣除，报酬直接存入你的账户。' + (ownerName ? '' : '（系统商店：无限收购）') })
     ]);
 
     let modalRef = null;
@@ -2502,11 +2579,21 @@
         const player = nameInput.value.trim();
         if (!player) { Toast.show('请输入你的游戏 ID', 'error'); return false; }
         if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) { Toast.show('游戏 ID 只能包含字母、数字、下划线（1-16 位）', 'error'); return false; }
-        const password = passInput.value;
-        if (!password) { Toast.show('请输入游戏密码（AuthMe 验证身份）', 'error'); return false; }
+        const logged = QSDB.isPlayerLoggedIn(player);
+        const usePwd = auth.method() === 'password';
+        const code = logged ? '' : (usePwd ? '' : auth.codeInput.value.trim());
+        const pwd = logged ? '' : (usePwd ? auth.pwdInput.value.trim() : '');
+        if (!logged) {
+          if (usePwd) {
+            if (!pwd) { Toast.show('请输入 AuthMe 密码', 'error'); return false; }
+          } else {
+            if (!code) { Toast.show('请输入游戏内验证码', 'error'); return false; }
+            if (!/^\d{6}$/.test(code)) { Toast.show('验证码应为 6 位数字', 'error'); return false; }
+          }
+        }
         const qty = currentQty();
         try { modalRef.setProcessing('处理中...'); } catch (e) { }
-        QSDB.sellShop(shop.shop_id, player, qty, password).then(function (r) {
+        QSDB.sellShop(shop.shop_id, player, qty, code, pwd).then(function (r) {
           if (r && r.success) {
             try { localStorage.setItem('qsw_player_name', player); } catch (e) { }
             Toast.show('✓ 出售成功：' + r.item + ' ×' + r.amount + ' 份，获得 $' + r.total_price + '，余额 $' + r.balance_left, 'success');
@@ -2546,6 +2633,28 @@
     toolbar.appendChild(sortSelect);
     root.appendChild(toolbar);
 
+    // 管理员筛选开关：全服商店 / 无限商店 / 管理员商店（仅管理员可见）
+    let shopFilter = '';
+    const filterBtns = {};
+    const filterBar = el('div', { class: 'admin-only', style: { display: 'none', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' } });
+    filterBar.appendChild(el('span', { style: { fontSize: '13px', color: '#6b7280', marginRight: '10px' }, text: '筛选：' }));
+    [['', '全服商店'], ['infinite', '无限商店'], ['system', '管理员商店']].forEach(function (pair) {
+      const btn = el('button', { class: 'neo-btn small', text: pair[1], style: { marginRight: '8px' } });
+      btn.onclick = function () {
+        shopFilter = pair[0];
+        Object.keys(filterBtns).forEach(function (k) { filterBtns[k].classList.remove('primary'); });
+        btn.classList.add('primary');
+        doSearch(true);
+      };
+      filterBtns[pair[0]] = btn;
+      filterBar.appendChild(btn);
+    });
+    if (state.isAdmin) {
+      filterBar.style.display = 'flex';
+      if (filterBtns['']) filterBtns[''].classList.add('primary');
+    }
+    root.appendChild(filterBar);
+
     const grid = el('div', { class: 'shop-grid', style: { gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' } });
     const status = el('div', { style: { textAlign: 'center', margin: '16px', fontSize: '13px', color: '#6b7280' } });
     const moreBtn = el('button', {
@@ -2565,7 +2674,7 @@
       if (reset) { page = 1; total = 0; rendered = 0; grid.innerHTML = ''; }
       try {
         const data = await QSDB.search(searchInput.value, {
-          page: page, pageSize: 40, material: matSelect.value || undefined, sort: sortSelect.value
+          page: page, pageSize: 40, material: matSelect.value || undefined, sort: sortSelect.value, filter: shopFilter || undefined
         });
         if (data.success) {
           total = data.total || 0;
@@ -3874,7 +3983,7 @@
   }
 
   //  备份恢复管理页面 (initBackupPage)
-  function initBackupPage() {
+  async function initBackupPage() {
     const root = ensureTabPanel('backup');
     if (!root) return;
 
@@ -4027,7 +4136,7 @@
         let html = '<thead><tr><th>文件名</th><th>大小</th><th>创建时间</th><th>类型</th><th>商店数</th><th>操作</th></tr></thead><tbody>';
         const files = listData.files || [];
         if (files.length === 0) {
-          html += '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888;">暂无备份文件</td></tr>';
+          html += '<tr><td colspan="6" style="text-align:center;padding:18px;color:#888;">暂无备份文件</td></tr>';
         } else {
           files.forEach(f => {
             const sizeStr = f.size_bytes !== undefined ? ((f.size_bytes / 1024).toFixed(1) + ' KB') : '-';

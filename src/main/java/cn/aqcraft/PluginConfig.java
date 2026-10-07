@@ -34,6 +34,28 @@ public final class PluginConfig {
     public int purchaseMaxAmount = 64;
     /** 登录（游戏账号）后是否允许离线购买（物品上线时发放） */
     public boolean allowOfflineBuy = true;
+    public int gameCodeTtlSeconds = 300;
+    public int gameCodeMaxAttempts = 5;
+    /** 玩家网页登录会话有效期（秒）：登录一次后交易免重复验证。 */
+    public int playerSessionTtlSeconds = 1800;
+    /** 是否允许用 AuthMe 密码登录（需服务器安装 AuthMe）。 */
+    public boolean allowAuthmeLogin = true;
+
+    // === P1/P2 增强功能 ===
+    /** 库存/收购容量提醒阈值（出售店剩余物品数低于此值告警） */
+    public int stockLowThreshold = 10;
+    /** 同一商店同类告警的冷却时间（毫秒） */
+    public long alertCooldownMs = 5 * 60 * 1000;
+    /** 交易连续失败熔断阈值（超过则进入保护，熔断期间拒绝在线交易） */
+    public int circuitBreakerThreshold = 8;
+    /** 熔断持续时间（毫秒） */
+    public long circuitBreakerDurationMs = 5 * 60 * 1000;
+    /** 订单流水上限（条） */
+    public int orderMax = 50000;
+    /** 审计日志上限（条） */
+    public int auditMax = 5000;
+    /** 通知 Webhook 地址（空 = 禁用通知） */
+    public String notificationWebhookUrl = "";
 
     // === 网站显示 ===
     public String serverName = "";
@@ -70,6 +92,17 @@ public final class PluginConfig {
         cfg.purchaseEnabled = c.getBoolean("purchase.enabled", true);
         cfg.purchaseMaxAmount = Math.max(1, c.getInt("purchase.max-amount", 64));
         cfg.allowOfflineBuy = c.getBoolean("purchase.allow-offline-buy", true);
+        cfg.gameCodeTtlSeconds = Math.max(30, c.getInt("purchase.game-code-ttl-seconds", 300));
+        cfg.gameCodeMaxAttempts = Math.max(1, c.getInt("purchase.game-code-max-attempts", 5));
+        cfg.playerSessionTtlSeconds = Math.max(60, c.getInt("purchase.player-session-ttl-seconds", 1800));
+        cfg.allowAuthmeLogin = c.getBoolean("purchase.allow-authme-login", true);
+        cfg.stockLowThreshold = c.getInt("shop.stock-low-threshold", 10);
+        cfg.alertCooldownMs = Math.max(1000, c.getLong("shop.alert-cooldown-ms", 5 * 60 * 1000));
+        cfg.circuitBreakerThreshold = Math.max(1, c.getInt("shop.circuit-breaker-threshold", 8));
+        cfg.circuitBreakerDurationMs = Math.max(1000, c.getLong("shop.circuit-breaker-duration-ms", 5 * 60 * 1000));
+        cfg.orderMax = Math.max(100, c.getInt("shop.order-max", 50000));
+        cfg.auditMax = Math.max(100, c.getInt("shop.audit-max", 5000));
+        cfg.notificationWebhookUrl = c.getString("notifications.webhook-url", "").trim();
         cfg.serverName = c.getString("server-name", "").trim();
         cfg.serverSubtitle = c.getString("server-subtitle", "").trim();
         for (String k : new String[]{"home", "buy", "sell", "browse", "shops", "stats"}) {

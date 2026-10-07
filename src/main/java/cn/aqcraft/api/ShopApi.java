@@ -351,6 +351,7 @@ public final class ShopApi extends ApiBase {
         p.keyword = kw == null ? "" : kw;
         p.material = req.param("material", "");
         p.shopType = req.param("shop_type", "");
+        p.filter = req.param("filter", "");
         p.owner = req.param("owner", "");
         p.world = req.param("world", "");
         p.minPrice = parseDouble(req.param("min_price"));

@@ -21,6 +21,7 @@ public final class ApiRouter {
     private final AdminApi adminApi;
     private final BackupApi backupApi;
     private final PurchaseApi purchaseApi;
+    private final EnhancedApi enhancedApi;
 
     public ApiRouter(QShopWebUIPlugin plugin) {
         this.plugin = plugin;
@@ -32,6 +33,7 @@ public final class ApiRouter {
         this.adminApi = new AdminApi(plugin);
         this.backupApi = new BackupApi(plugin);
         this.purchaseApi = new PurchaseApi(plugin);
+        this.enhancedApi = new EnhancedApi(plugin);
     }
 
     public HttpResponse handle(HttpRequest req) {
@@ -177,6 +179,13 @@ public final class ApiRouter {
             case "/api/sell":
                 return purchaseApi.sell(req);
 
+            case "/api/player/login":
+                return purchaseApi.playerLogin(req);
+            case "/api/player/logout":
+                return purchaseApi.playerLogout(req);
+            case "/api/player/session":
+                return purchaseApi.playerSession(req);
+
             case "/api/inventory-check":
                 return purchaseApi.inventoryCheck(req);
 
@@ -185,6 +194,46 @@ public final class ApiRouter {
 
             case "/api/wallet":
                 return authApi.wallet(req);
+
+            // ================= P1/P2 增强功能 =================
+            case "/api/orders":
+                if ("GET".equals(m)) return enhancedApi.orders(req);
+                break;
+            case "/api/orders/me":
+                return enhancedApi.myOrders(req);
+            case "/api/orders/clear":
+                if ("POST".equals(m)) return enhancedApi.ordersClear(req);
+                break;
+            case "/api/compare":
+                return enhancedApi.compare(req);
+            case "/api/compare/all":
+                return enhancedApi.compareAll(req);
+            case "/api/favorites":
+                if ("GET".equals(m)) return enhancedApi.favoritesList(req);
+                break;
+            case "/api/favorites/toggle":
+                if ("POST".equals(m)) return enhancedApi.favoritesToggle(req);
+                break;
+            case "/api/stats/business":
+                return enhancedApi.businessStats(req);
+            case "/api/audit":
+                if ("GET".equals(m)) return enhancedApi.audit(req);
+                break;
+            case "/api/audit/clear":
+                if ("POST".equals(m)) return enhancedApi.auditClear(req);
+                break;
+            case "/api/status":
+                return enhancedApi.shopStatus(req);
+            case "/api/status/open":
+                if ("POST".equals(m)) return enhancedApi.setOpen(req);
+                break;
+            case "/api/status/maintenance":
+                if ("POST".equals(m)) return enhancedApi.setMaintenance(req);
+                break;
+            case "/api/monitor/stock":
+                return enhancedApi.stockMonitor(req);
+            case "/api/notify/status":
+                return enhancedApi.notifyStatus(req);
 
             case "/api/pages":
                 return "GET".equalsIgnoreCase(m) ? metaApi.pagesGet(req) : metaApi.pagesSet(req);
@@ -223,6 +272,13 @@ public final class ApiRouter {
                 if ("PUT".equals(m)) return shopApi.update(req, rest);
                 if ("DELETE".equals(m)) return shopApi.delete(req, rest);
                 return HttpResponse.error(405, "Method Not Allowed");
+            }
+        }
+
+        if (p.startsWith("/api/orders/")) {
+            String rest = p.substring("/api/orders/".length());
+            if (!rest.isEmpty() && "GET".equals(m)) {
+                return enhancedApi.orderById(req, rest);
             }
         }
 

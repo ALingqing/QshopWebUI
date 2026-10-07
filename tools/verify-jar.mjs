@@ -52,7 +52,7 @@ const walk = (d, acc = []) => {
 };
 const all = walk(tmp);
 
-for (const n of ['PurchaseService.class', 'PurchaseApi.class', 'EconomyBridge.class', 'AuthMeBridge.class', 'LimitedBridge.class', 'ItemCodec.class', 'PurchaseJoinListener.class']) {
+for (const n of ['PurchaseService.class', 'PurchaseApi.class', 'GameCodeService.class', 'EconomyBridge.class', 'AuthMeBridge.class', 'LimitedBridge.class', 'ItemCodec.class', 'PurchaseJoinListener.class']) {
   const hit = all.filter((x) => x.includes(n));
   console.log(n + ': ' + (hit.length ? hit.join(', ') : '!! 缺失'));
 }
@@ -75,7 +75,9 @@ check('web/js/db.js', 'inventoryCheck', 'db.js inventoryCheck API');
 check('web/js/db.js', 'getLimit', 'db.js getLimit API');
 check('web/css/style.css', '多设备适配', 'style.css 响应式');
 check('config.yml', 'purchase:', 'config.yml purchase 段');
+check('config.yml', 'game-code-ttl-seconds', 'config.yml 验证码配置');
 check('plugin.yml', 'QShopWebUI', 'plugin.yml');
+check('plugin.yml', 'code|reload', 'plugin.yml 验证码命令');
 check('custom_lang_zh_cn.json', 'item.dnt.', '数据包翻译表');
 {
   const txt = fs.readFileSync(path.join(tmp, 'web/js/app.js'), 'utf8');
@@ -83,12 +85,12 @@ check('custom_lang_zh_cn.json', 'item.dnt.', '数据包翻译表');
   console.log('app.js 旧店主行已清除: ' + (txt.includes("tr('店主', shop.owner_name") ? '!! 仍有残留' : '✓'));
   console.log('app.js 「库存上限:无限」行已清除: ' + (txt.includes("'库存上限'") ? '!! 仍有残留' : '✓'));
   console.log('app.js 游戏登录已移除: ' + (txt.includes('游戏登录') ? '!! 仍有残留' : '✓'));
-  console.log('app.js 购买密码字段: ' + (txt.includes('游戏密码（AuthMe 验证身份）') ? '✓' : '!! 未找到'));
+  console.log('app.js 验证码购买字段: ' + (txt.includes('游戏内验证码') ? '✓' : '!! 未找到'));
   console.log('app.js 图片 CDN 回退: ' + (txt.includes('mcitemgallery.com') ? '✓' : '!! 未找到'));
   console.log('app.js 限购显示: ' + (txt.includes('限购') ? '✓' : '!! 未找到'));
   const dbTxt = fs.readFileSync(path.join(tmp, 'web/js/db.js'), 'utf8');
   console.log('db.js playerLogin 已移除: ' + (dbTxt.includes('playerLogin') ? '!! 仍有残留' : '✓'));
-  console.log('db.js 购买携带密码: ' + (dbTxt.includes('password: password') ? '✓' : '!! 未找到'));
+  console.log('db.js 购买携带验证码: ' + (dbTxt.includes("code: code") ? '✓' : '!! 未找到'));
   console.log('db.js 限购 API: ' + (dbTxt.includes('getLimit') ? '✓' : '!! 未找到'));
 }
 {
